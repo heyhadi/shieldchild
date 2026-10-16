@@ -16,6 +16,7 @@ class ShieldAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
+        if (!com.shieldchild.app.engine.ProfileGuard.isScreenInteractiveForProfile(this)) return
 
         // Touch-driven events keep a parent session alive (it ends after 5 min idle).
         // Content changes are excluded: a playing video would otherwise keep it open forever.
@@ -79,6 +80,7 @@ class ShieldAccessibilityService : AccessibilityService() {
     }
 
     private fun checkAndEnforceCurfew(foregroundPkg: String? = null) {
+        if (!com.shieldchild.app.engine.ProfileGuard.isScreenInteractiveForProfile(this)) return
         val app = applicationContext as? ShieldApplication ?: return
         val repo = app.preferencesRepository
         if (!repo.isSetupCompleted()) return

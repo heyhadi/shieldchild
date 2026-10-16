@@ -64,6 +64,7 @@ class CurfewLockActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        currentInstance = java.lang.ref.WeakReference(this)
         authManager = ParentAuthManager(ShieldApplication.instance.preferencesRepository)
         biometricHelper = BiometricAuthHelper(this)
 
@@ -83,6 +84,10 @@ class CurfewLockActivity : FragmentActivity() {
             LaunchedEffect(Unit) {
                 while (true) {
                     delay(2_000)
+                    if (!com.shieldchild.app.engine.ProfileGuard.isCurrentProfileActive(this@CurfewLockActivity)) {
+                        closeLock()
+                        break
+                    }
                     val repo = ShieldApplication.instance.preferencesRepository
                     val current = com.shieldchild.app.engine.CurfewLockLauncher.evaluateRebootLockReason(
                         policy = repo.getCurfewPolicy(),
@@ -188,13 +193,13 @@ class CurfewLockActivity : FragmentActivity() {
     private fun setupLockWindowFlags() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
-            setTurnScreenOn(true)
+            // DO NOT call setTurnScreenOn(true): it forces the display back on 1s after pressing Power.
         }
         if (!resources.getBoolean(R.bool.allow_screenshots)) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         window.addFlags(
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
                     WindowManager.LayoutParams.FLAG_FULLSCREEN
+            // DO NOT add FLAG_KEEP_SCREEN_ON: allow natural screen timeout and Power button sleep.
         )
     }
 
@@ -229,15 +234,33 @@ class CurfewLockActivity : FragmentActivity() {
         isShowing = false
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        if (currentInstance?.get() === this) {
+            currentInstance = null
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         com.shieldchild.app.ui.dashboard.ParentDashboardActivity.isParentAuthenticatedState.value = false
         isLaunchingEmergency = false
     }
 
+    private fun shouldEnforceFront(): Boolean {
+        return !isUnlocked &&
+                !isLaunchingEmergency &&
+                !PhoneGuard.isInCall(this) &&
+                com.shieldchild.app.engine.ProfileGuard.isScreenInteractiveForProfile(this)
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (!isUnlocked && !isLaunchingEmergency && !PhoneGuard.isInCall(this)) {
+        if (!com.shieldchild.app.engine.ProfileGuard.isCurrentProfileActive(this)) {
+            closeLock()
+            return
+        }
+        if (shouldEnforceFront()) {
             val intent = Intent(this, CurfewLockActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                         Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
@@ -249,7 +272,11 @@ class CurfewLockActivity : FragmentActivity() {
 
     override fun onPause() {
         super.onPause()
-        if (!isUnlocked && !isLaunchingEmergency && !PhoneGuard.isInCall(this)) {
+        if (!com.shieldchild.app.engine.ProfileGuard.isCurrentProfileActive(this)) {
+            closeLock()
+            return
+        }
+        if (shouldEnforceFront()) {
             val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
             try {
                 am?.moveTaskToFront(taskId, ActivityManager.MOVE_TASK_NO_USER_ACTION)
@@ -259,13 +286,11 @@ class CurfewLockActivity : FragmentActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (!hasFocus && !isUnlocked && !isLaunchingEmergency && !PhoneGuard.isInCall(this)) {
-            @Suppress("DEPRECATION")
-            val closeDialogs = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
-            try {
-                sendBroadcast(closeDialogs)
-            } catch (_: Exception) {}
-
+        if (!com.shieldchild.app.engine.ProfileGuard.isCurrentProfileActive(this)) {
+            closeLock()
+            return
+        }
+        if (!hasFocus && shouldEnforceFront()) {
             val intent = Intent(this, CurfewLockActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                         Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
@@ -319,10 +344,20 @@ class CurfewLockActivity : FragmentActivity() {
     companion object {
         const val EXTRA_LOCK_REASON = "extra_lock_reason"
 
-        /** True while the lock screen is visible, so the monitor doesn't relaunch it every check. */
         @Volatile
         var isShowing = false
             private set
+
+        private var currentInstance: java.lang.ref.WeakReference<CurfewLockActivity>? = null
+
+        fun dismissIfShowing() {
+            val activity = currentInstance?.get() ?: return
+            activity.runOnUiThread {
+                if (!activity.isFinishing && !activity.isDestroyed) {
+                    activity.closeLock()
+                }
+            }
+        }
     }
 }
 
