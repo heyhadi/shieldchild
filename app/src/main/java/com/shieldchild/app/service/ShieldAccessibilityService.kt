@@ -37,7 +37,7 @@ class ShieldAccessibilityService : AccessibilityService() {
             // 2. 24/7 Anti-Uninstall & Anti-Tamper Protection (ACTIVE EVEN DURING ALLOWED USAGE TIME)
             // Stays on during a parent session: a child handed the phone back unlocked
             // must not get a window to switch protection off.
-            if (!isParentUninstallActive()) {
+            if (shouldGuardSettings(ShieldApplication.instance.preferencesRepository.isSetupCompleted())) {
                 val isSettings = pkgName == "com.android.settings" || pkgName.contains(".settings")
                 val isInstallerOrStore = pkgName.contains("packageinstaller") ||
                         pkgName.contains("permissioncontroller") ||
@@ -123,6 +123,13 @@ class ShieldAccessibilityService : AccessibilityService() {
             isParentUninstallAllowed = false
             parentUninstallAllowedUntil = 0L
         }
+
+        /**
+         * Before setup there is no PIN to unlock with, and setup itself sends the parent to
+         * Settings screens that show "ShieldChild", so deflecting then would lock the phone for good.
+         */
+        fun shouldGuardSettings(isSetupCompleted: Boolean): Boolean =
+            isSetupCompleted && !isParentUninstallActive()
 
         fun isParentUninstallActive(): Boolean {
             if (!isParentUninstallAllowed) return false
