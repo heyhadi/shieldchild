@@ -381,4 +381,7 @@
     <string name="call_parent">Call parent</string>
     <string name="method_system">ShieldChild</string>
     <string name="log_clock_changed">Clock changed, phone locked</string>
+    <string name="restricted_setting_title">Switch greyed out? &quot;Restricted setting&quot;</string>
+    <string name="restricted_setting_steps">Android blocks this for apps not installed from the Play Store. Tap Open App info, then ⋮ (top right) → Allow restricted settings, then come back and tap Grant. No ⋮ option? Tap Grant once first, then try again.</string>
+    <string name="open_app_info">Open App info</string>
 </resources>

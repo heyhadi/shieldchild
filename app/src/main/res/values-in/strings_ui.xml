@@ -376,4 +376,7 @@
     <string name="call_parent">Telepon orang tua</string>
     <string name="method_system">ShieldChild</string>
     <string name="log_clock_changed">Jam HP diubah, HP dikunci</string>
+    <string name="restricted_setting_title">Tombol abu-abu? &quot;Setelan terbatas&quot;</string>
+    <string name="restricted_setting_steps">Android memblokir ini untuk aplikasi yang tidak dipasang dari Play Store. Ketuk Buka info aplikasi, lalu ⋮ (kanan atas) → Izinkan setelan terbatas, lalu kembali dan ketuk Izinkan. Tidak ada opsi ⋮? Ketuk Izinkan sekali dulu, lalu coba lagi.</string>
+    <string name="open_app_info">Buka info aplikasi</string>
 </resources>

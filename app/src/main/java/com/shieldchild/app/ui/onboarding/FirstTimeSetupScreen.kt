@@ -276,6 +276,17 @@ fun FirstTimeSetupScreen(
                         hasDeviceAdmin = hasDeviceAdmin,
                         hasAccessibility = hasAccessibility,
                         hasNotification = hasNotification,
+                        showRestrictedHint = isSideloadedOnAndroid13Plus(context),
+                        onOpenAppInfo = {
+                            try {
+                                ShieldAccessibilityService.allowParentUninstall()
+                                context.startActivity(
+                                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+                                )
+                            } catch (_: Exception) {
+                                Toast.makeText(context, str(R.string.open_settings_accessibility_shieldchild), Toast.LENGTH_LONG).show()
+                            }
+                        },
                         onGrantUsage = {
                             try {
                                 ShieldAccessibilityService.allowParentUninstall()
@@ -961,6 +972,8 @@ private fun Step3Permissions(
     hasDeviceAdmin: Boolean,
     hasAccessibility: Boolean,
     hasNotification: Boolean,
+    showRestrictedHint: Boolean,
+    onOpenAppInfo: () -> Unit,
     onGrantUsage: () -> Unit,
     onGrantOverlay: () -> Unit,
     onGrantDeviceAdmin: () -> Unit,
@@ -1129,6 +1142,26 @@ private fun Step3Permissions(
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                         ) {
                             Text(str(R.string.grant), fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!hasAccessibility && showRestrictedHint) {
+            item {
+                Surface(
+                    shape = RoundedCornerShape(22.dp),
+                    color = colPrimaryContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Text(str(R.string.restricted_setting_title), fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = colOnPrimaryContainer)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(str(R.string.restricted_setting_steps), fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = colOnPrimaryContainer, lineHeight = 18.sp)
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OutlinedButton(onClick = onOpenAppInfo, shape = RoundedCornerShape(20.dp)) {
+                            Text(str(R.string.open_app_info), fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = colPrimary)
                         }
                     }
                 }
@@ -1337,6 +1370,16 @@ private fun hasOverlayPermission(context: Context): Boolean {
 private fun hasDeviceAdminPermission(context: Context): Boolean {
     val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager ?: return false
     return dpm.isAdminActive(ShieldDeviceAdminReceiver.getComponentName(context))
+}
+
+/** Android 13+ greys out Accessibility ("Restricted setting") for apps not installed from Play. */
+private fun isSideloadedOnAndroid13Plus(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
+    return try {
+        context.packageManager.getInstallSourceInfo(context.packageName).installingPackageName != "com.android.vending"
+    } catch (_: Exception) {
+        true
+    }
 }
 
 private fun hasAccessibilityPermission(context: Context): Boolean {
