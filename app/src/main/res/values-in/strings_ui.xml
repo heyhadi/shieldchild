@@ -69,8 +69,8 @@
     <string name="hours_mins_locked_every_night">Terkunci %1$s jam %2$s menit tiap malam</string>
     <string name="hours_locked_every_night">Terkunci %1$s jam tiap malam</string>
     <string name="emergency_calls">Panggilan darurat</string>
-    <string name="can_always_call_this_number">%1$s selalu bisa menelepon nomor ini, meskipun HP terkunci.</string>
-    <string name="emergency_number">Nomor darurat</string>
+    <string name="can_always_call_this_number">%1$s bisa menelepon nomor ini dari layar kunci. Panggilan darurat (112) selalu bisa, meskipun nomor ini kosong.</string>
+    <string name="emergency_number">Nomor HP orang tua</string>
     <string name="call">Telepon</string>
     <string name="how_you_unlock_parent_controls">Cara kamu membuka kontrol orang tua.</string>
     <string name="kid_s_profile">Profil anak</string>
@@ -206,9 +206,9 @@
     <string name="hardware_not_enrolled">Belum ada sidik jari</string>
     <string name="turn_on">Aktifkan</string>
     <string name="only_turn_this_on_if">Aktifkan hanya kalau sidik jari anak tidak tersimpan di HP ini. Sidik jari apa pun yang tersimpan di sini bisa membuka mode orang tua. Kalau nanti ada sidik jari baru, fitur ini otomatis mati.</string>
-    <string name="emergency_sos_contact">Kontak darurat</string>
-    <string name="can_call_even_when_locked">%1$s tetap bisa menelepon meskipun HP terkunci.</string>
-    <string name="e_g_911_or_parent">misal 112 atau nomor orang tua</string>
+    <string name="emergency_sos_contact">Nomor HP orang tua</string>
+    <string name="can_call_even_when_locked">%1$s bisa menelepon atau SMS kamu dari layar kunci. Panggilan darurat selalu bisa.</string>
+    <string name="e_g_911_or_parent">misal 0812 3456 7890</string>
     <string name="activate_protection_armor">Aktifkan perlindungan</string>
     <string name="grant_these_permissions_to_enforce">Berikan izin ini supaya batas waktu layar berjalan, aplikasi tidak bisa dihapus sembarangan, dan anak tidak bisa mengakalinya.</string>
     <string name="disables_the_android_uninstall_button">Mematikan tombol hapus di Android, jadi anak tidak bisa menghapus ShieldChild.</string>
@@ -373,4 +373,7 @@
     <string name="day_fri">Jum</string>
     <string name="day_sat">Sab</string>
     <string name="day_sun">Min</string>
+    <string name="call_parent">Telepon orang tua</string>
+    <string name="method_system">ShieldChild</string>
+    <string name="log_clock_changed">Jam HP diubah, HP dikunci</string>
 </resources>

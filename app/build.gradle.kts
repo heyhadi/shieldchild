@@ -31,6 +31,10 @@ android {
         // reads the number after the dash. Bump both for every GitHub release.
         versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 2
         versionName = (project.findProperty("versionName") as String?) ?: "1.0.1"
+        // Only for taking README/website screenshots locally (-PallowScreenshots=true). Never set in CI.
+        // A resource (read at run time) rather than a BuildConfig constant, which Kotlin inlines and
+        // incremental builds can leave stale.
+        resValue("bool", "allow_screenshots", (project.findProperty("allowScreenshots") == "true").toString())
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

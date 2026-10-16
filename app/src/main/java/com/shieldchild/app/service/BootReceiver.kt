@@ -15,7 +15,6 @@ class BootReceiver : BroadcastReceiver() {
             action == Intent.ACTION_LOCKED_BOOT_COMPLETED ||
             action == "android.intent.action.QUICKBOOT_POWERON" ||
             action == "com.htc.intent.action.QUICKBOOT_POWERON" ||
-            action == "android.intent.action.REBOOT" ||
             action == Intent.ACTION_MY_PACKAGE_REPLACED
         ) {
             val app = context.applicationContext as? ShieldApplication

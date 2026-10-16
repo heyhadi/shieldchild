@@ -31,7 +31,8 @@ data class DeviceCurfewPolicy(
     val curfewEndMinute: Int = 0,
     val isInstantLocked: Boolean = false, // One-tap manual lockout
     val bonusMinutesToday: Long = 0L,
-    val emergencyPhoneNumber: String = "911"
+    /** The parent's phone, for "Call parent" / "Text parent". Emergencies use the system dialer. */
+    val emergencyPhoneNumber: String = ""
 ) {
     val effectiveDailyLimitMinutes: Long
         get() = dailyTotalLimitMinutes + bonusMinutesToday
@@ -81,7 +82,9 @@ enum class GrantMethod(@androidx.annotation.StringRes val labelRes: Int) {
     PIN(com.shieldchild.app.R.string.method_pin),
     FINGERPRINT(com.shieldchild.app.R.string.method_fingerprint),
     RECOVERY_KEY(com.shieldchild.app.R.string.method_recovery_key),
-    REMOTE_CODE(com.shieldchild.app.R.string.method_remote_code)
+    REMOTE_CODE(com.shieldchild.app.R.string.method_remote_code),
+    /** Events ShieldChild records itself, e.g. a clock change. */
+    SYSTEM(com.shieldchild.app.R.string.method_system)
 }
 
 data class GrantLogEntry(
@@ -97,5 +100,6 @@ object GrantLog {
     const val REST_OF_TODAY = "REST_OF_TODAY"
     const val BEDTIME_OFF = "BEDTIME_OFF"
     const val INSTANT_OFF = "INSTANT_OFF"
+    const val CLOCK_CHANGED = "CLOCK_CHANGED"
     fun minutes(minutes: Long) = "MINUTES:$minutes"
 }

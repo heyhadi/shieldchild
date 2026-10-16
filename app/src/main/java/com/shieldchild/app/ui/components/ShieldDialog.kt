@@ -120,7 +120,13 @@ fun ShieldDialog(
 
 /** A full-width option button inside a [ShieldDialog] (e.g. the lock screen's choices). */
 @Composable
-fun DialogOption(text: String, onClick: () -> Unit, primary: Boolean = false, modifier: Modifier = Modifier.fillMaxWidth()) {
+fun DialogOption(
+    text: String,
+    onClick: () -> Unit,
+    primary: Boolean = false,
+    modifier: Modifier = Modifier.fillMaxWidth(),
+    compact: Boolean = false
+) {
     val c = Shield.colors
     Button(
         onClick = onClick,
@@ -130,8 +136,10 @@ fun DialogOption(text: String, onClick: () -> Unit, primary: Boolean = false, mo
         } else {
             ButtonDefaults.buttonColors(containerColor = c.surfaceVariant, contentColor = c.ink)
         },
+        // Compact options sit three in a row ("+15 min", "+30 min", "+1 h") and must stay on one line.
+        contentPadding = if (compact) androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp) else ButtonDefaults.ContentPadding,
         modifier = modifier.heightIn(min = 48.dp)
-    ) { Text(text, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center) }
+    ) { Text(text, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = if (compact) 1 else Int.MAX_VALUE, softWrap = !compact) }
 }
 
 /** Number-only secret entry (PINs and codes): number keypad, hidden digits, centred. */

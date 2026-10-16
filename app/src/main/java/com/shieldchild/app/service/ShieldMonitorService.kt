@@ -33,7 +33,16 @@ import kotlinx.coroutines.launch
 class ShieldMonitorService : Service() {
 
     private val serviceJob = Job()
-    private val serviceScope = CoroutineScope(Dispatchers.Default + serviceJob)
+    // One evaluation at a time: the loop, app switches and receivers all touch the same state.
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val serviceScope = CoroutineScope(Dispatchers.Default.limitedParallelism(1) + serviceJob)
+
+    // WindowManager views (the app-limit overlay) must be added and removed on the main thread.
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private fun onMain(block: () -> Unit) = mainHandler.post(block)
+
+    private var lastWallMs = 0L
+    private var lastUptimeMs = 0L
 
     private lateinit var preferencesRepository: PreferencesRepository
     private lateinit var usageMonitor: UsageMonitor
@@ -50,7 +59,20 @@ class ShieldMonitorService : Service() {
         overlayManager = AppShieldOverlayManager(this)
 
         startForeground(NOTIFICATION_ID, buildForegroundNotification())
+        // Device Owner set up with adb (see README) never gets the provisioning callback, so the
+        // hardened restrictions are applied here; it does nothing on a normal install.
+        try {
+            ShieldDeviceAdminReceiver.applyDeviceOwnerRestrictions(this)
+        } catch (_: Exception) {}
         registerReceiver(screenOffReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
+        registerReceiver(screenOnReceiver, IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_USER_PRESENT)
+        })
+        registerReceiver(clockReceiver, IntentFilter().apply {
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+        })
         startMonitoringLoop()
     }
 
@@ -64,6 +86,37 @@ class ShieldMonitorService : Service() {
             if (inCall) return
             preferencesRepository.endParentSession()
             serviceScope.launch { evaluateCurrentState() }
+        }
+    }
+
+    /** Checking right when the screen comes on replaces fast polling while it's off. */
+    private val screenOnReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            serviceScope.launch { evaluateCurrentState() }
+        }
+    }
+
+    /** A manual clock or time-zone change (SEC-4) locks the phone until a parent unlocks it. */
+    private val clockReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            serviceScope.launch {
+                val resolver = contentResolver
+                val autoTime = android.provider.Settings.Global.getInt(resolver, android.provider.Settings.Global.AUTO_TIME, 1) == 1
+                val autoZone = android.provider.Settings.Global.getInt(resolver, android.provider.Settings.Global.AUTO_TIME_ZONE, 1) == 1
+                val tampered = when (intent.action) {
+                    Intent.ACTION_TIMEZONE_CHANGED -> !autoZone
+                    else -> com.shieldchild.app.engine.ClockGuard.isSuspiciousJump(
+                        lastWallMs, lastUptimeMs, System.currentTimeMillis(), android.os.SystemClock.elapsedRealtime(), autoTime
+                    )
+                }
+                val parentIsHere = preferencesRepository.isParentSessionActive() ||
+                        com.shieldchild.app.ui.dashboard.ParentDashboardActivity.isParentAuthenticatedState.value
+                if (tampered && !parentIsHere && preferencesRepository.isSetupCompleted()) {
+                    preferencesRepository.setInstantLock(true)
+                    preferencesRepository.addGrantLog(com.shieldchild.app.data.GrantMethod.SYSTEM, com.shieldchild.app.data.GrantLog.CLOCK_CHANGED)
+                }
+                evaluateCurrentState()
+            }
         }
     }
 
@@ -89,14 +142,17 @@ class ShieldMonitorService : Service() {
 
     private fun startMonitoringLoop() {
         serviceScope.launch {
+            val power = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
             while (isActive) {
-                evaluateCurrentState()
+                if (power.isInteractive) evaluateCurrentState()
                 delay(POLL_INTERVAL_MS)
             }
         }
     }
 
     private fun evaluateCurrentState() {
+        lastWallMs = System.currentTimeMillis()
+        lastUptimeMs = android.os.SystemClock.elapsedRealtime()
         // Idle or 30-minute limit reached: close the session so its time is excluded and the lock returns.
         if (preferencesRepository.hasParentSessionRecord() && !preferencesRepository.isParentSessionActive()) {
             preferencesRepository.endParentSession()
@@ -126,11 +182,19 @@ class ShieldMonitorService : Service() {
 
         when (lockState) {
             is LockState.CurfewLock -> {
-                overlayManager.dismiss()
-                com.shieldchild.app.engine.CurfewLockLauncher.launch(this, lockState.reason)
+                onMain { overlayManager.dismiss() }
+                // Don't cover a parent working in the dashboard (UI-17) or a phone call (BUG-4),
+                // and don't relaunch a lock screen that is already showing (BUG-7).
+                val parentInDashboard = fgPkg == packageName &&
+                        com.shieldchild.app.ui.dashboard.ParentDashboardActivity.isParentAuthenticatedState.value
+                if (!CurfewLockActivity.isShowing && !parentInDashboard &&
+                    !com.shieldchild.app.engine.PhoneGuard.shouldYield(this, fgPkg)
+                ) {
+                    com.shieldchild.app.engine.CurfewLockLauncher.launch(this, lockState.reason)
+                }
             }
             is LockState.SingleAppLock -> {
-                if (fgPkg != packageName) {
+                if (fgPkg != packageName) onMain {
                     overlayManager.showAppLock(
                         packageName = lockState.packageName,
                         appName = lockState.appName,
@@ -140,7 +204,7 @@ class ShieldMonitorService : Service() {
                 }
             }
             is LockState.Unlocked -> {
-                overlayManager.dismiss()
+                onMain { overlayManager.dismiss() }
                 com.shieldchild.app.engine.CurfewLockLauncher.dismissLockNotification(this)
             }
         }
@@ -230,13 +294,19 @@ class ShieldMonitorService : Service() {
         } catch (_: Exception) {}
         serviceJob.cancel()
         overlayManager.dismiss()
+        try {
+            unregisterReceiver(screenOnReceiver)
+            unregisterReceiver(clockReceiver)
+        } catch (_: Exception) {}
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
         const val NOTIFICATION_ID = 1001
-        const val POLL_INTERVAL_MS = 500L
+        // App switches are handled instantly by the accessibility service; this only catches limits
+        // running out while staying in one app.
+        const val POLL_INTERVAL_MS = 5_000L
 
         const val ACTION_FOREGROUND_PACKAGE_CHANGED = "com.shieldchild.action.PKG_CHANGED"
         const val ACTION_RECHECK_POLICIES = "com.shieldchild.action.RECHECK"

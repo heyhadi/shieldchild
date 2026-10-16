@@ -45,6 +45,7 @@ import com.shieldchild.app.ui.components.ShieldDialog
 import com.shieldchild.app.data.GrantMethod
 import com.shieldchild.app.data.LockReason
 import com.shieldchild.app.engine.AccessGrants
+import com.shieldchild.app.engine.PhoneGuard
 import com.shieldchild.app.engine.RedeemResult
 import com.shieldchild.app.engine.RemoteCodeManager
 import com.shieldchild.app.engine.AuthResult
@@ -99,6 +100,7 @@ class CurfewLockActivity : FragmentActivity() {
                 CurfewLockScreen(
                     reason = lockReason,
                     onEmergencyCall = { launchEmergencyDialer() },
+                    onCallParent = { callParent() },
                     onFingerprintAuth = { triggerBiometricUnlock() },
                     onSendExtensionSms = { launchExtensionSms() },
                     onParentAuthenticated = { method -> authMethod = method },
@@ -188,8 +190,8 @@ class CurfewLockActivity : FragmentActivity() {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
         }
+        if (!resources.getBoolean(R.bool.allow_screenshots)) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         window.addFlags(
-            WindowManager.LayoutParams.FLAG_SECURE or
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
                     WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
                     WindowManager.LayoutParams.FLAG_FULLSCREEN
@@ -214,6 +216,19 @@ class CurfewLockActivity : FragmentActivity() {
     private var isUnlocked = false
     private var isLaunchingEmergency = false
 
+    override fun onStart() {
+        super.onStart()
+        isShowing = true
+        // The full-screen notification only exists to bring this screen up (e.g. after a reboot);
+        // once it's showing, the notification would just sit on top of it.
+        com.shieldchild.app.engine.CurfewLockLauncher.dismissLockNotification(this)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        isShowing = false
+    }
+
     override fun onResume() {
         super.onResume()
         com.shieldchild.app.ui.dashboard.ParentDashboardActivity.isParentAuthenticatedState.value = false
@@ -222,7 +237,7 @@ class CurfewLockActivity : FragmentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (!isUnlocked && !isLaunchingEmergency) {
+        if (!isUnlocked && !isLaunchingEmergency && !PhoneGuard.isInCall(this)) {
             val intent = Intent(this, CurfewLockActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                         Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
@@ -234,7 +249,7 @@ class CurfewLockActivity : FragmentActivity() {
 
     override fun onPause() {
         super.onPause()
-        if (!isUnlocked && !isLaunchingEmergency) {
+        if (!isUnlocked && !isLaunchingEmergency && !PhoneGuard.isInCall(this)) {
             val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
             try {
                 am?.moveTaskToFront(taskId, ActivityManager.MOVE_TASK_NO_USER_ACTION)
@@ -244,7 +259,7 @@ class CurfewLockActivity : FragmentActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (!hasFocus && !isUnlocked && !isLaunchingEmergency) {
+        if (!hasFocus && !isUnlocked && !isLaunchingEmergency && !PhoneGuard.isInCall(this)) {
             @Suppress("DEPRECATION")
             val closeDialogs = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
             try {
@@ -265,14 +280,22 @@ class CurfewLockActivity : FragmentActivity() {
         // Strictly consume back press - lock screen cannot be dismissed via back key
     }
 
+    /** Android's own emergency dialer: knows the local number (112/911/995…) and works without a SIM. */
     private fun launchEmergencyDialer() {
         isLaunchingEmergency = true
-        val policy = ShieldApplication.instance.preferencesRepository.getCurfewPolicy()
-        val dialIntent = Intent(Intent.ACTION_DIAL).apply {
-            data = Uri.parse("tel:${policy.emergencyPhoneNumber}")
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        val emergency = Intent("com.android.phone.EmergencyDialer.DIAL").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            startActivity(emergency)
+        } catch (_: Exception) {
+            startActivity(Intent(Intent.ACTION_DIAL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
-        startActivity(dialIntent)
+    }
+
+    private fun callParent() {
+        val number = ShieldApplication.instance.preferencesRepository.getCurfewPolicy().emergencyPhoneNumber
+        if (number.isBlank()) return
+        isLaunchingEmergency = true
+        startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$number")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     private fun launchExtensionSms() {
@@ -295,6 +318,11 @@ class CurfewLockActivity : FragmentActivity() {
 
     companion object {
         const val EXTRA_LOCK_REASON = "extra_lock_reason"
+
+        /** True while the lock screen is visible, so the monitor doesn't relaunch it every check. */
+        @Volatile
+        var isShowing = false
+            private set
     }
 }
 
@@ -302,6 +330,7 @@ class CurfewLockActivity : FragmentActivity() {
 fun CurfewLockScreen(
     reason: LockReason,
     onEmergencyCall: () -> Unit,
+    onCallParent: () -> Unit,
     onFingerprintAuth: () -> Unit,
     onSendExtensionSms: () -> Unit,
     onParentAuthenticated: (GrantMethod) -> Unit,
@@ -517,6 +546,15 @@ fun CurfewLockScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                val parentNumber = remember { ShieldApplication.instance.preferencesRepository.getCurfewPolicy().emergencyPhoneNumber }
+                if (parentNumber.isNotBlank()) {
+                    TextButton(onClick = onCallParent, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Icon(Icons.Default.Phone, contentDescription = null, tint = Shield.colors.primary, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(str(R.string.call_parent), fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Shield.colors.primary)
+                    }
+                }
+
                 // Button 4: Emergency Calls
                 TextButton(
                     onClick = onEmergencyCall,
@@ -644,7 +682,7 @@ fun ExtensionRequestDialog(
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (isFingerprintAvailable) DialogOption(str(R.string.parent_here_fingerprint), onFingerprintGrant, primary = true)
             DialogOption(str(R.string.parent_here_pin), onPinGrant, primary = !isFingerprintAvailable)
-            DialogOption(str(R.string.text_parent, emergencyPhone), onSendSms)
+            if (emergencyPhone.isNotBlank()) DialogOption(str(R.string.text_parent, emergencyPhone), onSendSms)
         }
     }
 }
@@ -732,7 +770,8 @@ fun ParentChoiceDialog(
                     DialogOption(
                         if (minutes == 60L) str(R.string.t_1_h) else str(R.string.min_2, minutes),
                         { onChoice(ParentChoice.ExtraMinutes(minutes)) },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        compact = true
                     )
                 }
             }

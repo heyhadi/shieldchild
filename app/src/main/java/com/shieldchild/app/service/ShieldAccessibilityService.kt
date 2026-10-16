@@ -91,6 +91,9 @@ class ShieldAccessibilityService : AccessibilityService() {
             access = repo.getAccessState()
         )
 
+        // Calls always win: never cover the dialer, an incoming call or the in-call screen.
+        if (com.shieldchild.app.engine.PhoneGuard.shouldYield(this, foregroundPkg)) return
+
         if (reason != null) {
             // Curfew is active: ensure CurfewLockActivity stays on top
             if (foregroundPkg != packageName && foregroundPkg != "com.shieldchild.app.ui.curfew.CurfewLockActivity") {

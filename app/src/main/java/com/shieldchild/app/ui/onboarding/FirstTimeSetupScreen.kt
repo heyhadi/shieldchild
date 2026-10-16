@@ -391,7 +391,7 @@ fun FirstTimeSetupScreen(
                                 val currentPolicy = repo.getCurfewPolicy()
                                 val updatedPolicy = currentPolicy.copy(
                                     dailyTotalLimitMinutes = dailyLimitMinutes,
-                                    emergencyPhoneNumber = emergencyPhone.trim().ifEmpty { "911" }
+                                    emergencyPhoneNumber = emergencyPhone.trim()
                                 )
                                 repo.saveCurfewPolicy(updatedPolicy)
                                 repo.setSetupCompleted(true)

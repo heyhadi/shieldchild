@@ -35,7 +35,7 @@ jobs:
     permissions:
       contents: write
     env:
-      # Local builds are 1.0.1 (build 2); CI builds continue above that.
+      # Local builds are 1.0.1 (build 2); CI builds continue above that (run 4 = build 14).
       VERSION_CODE: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
@@ -54,7 +54,8 @@ jobs:
       - name: Version
         id: version
         run: |
-          CODE=$(( VERSION_CODE + 2 ))
+          # +10 leaves room for local test builds (build 8, 9…) without ever going backwards.
+          CODE=$(( VERSION_CODE + 10 ))
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
           echo "name=1.0.$CODE" >> "$GITHUB_OUTPUT"
           echo "Building 1.0.$CODE (versionCode $CODE)"

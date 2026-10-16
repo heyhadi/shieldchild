@@ -147,7 +147,9 @@ class ParentDashboardActivity : FragmentActivity() {
         val insetsController = WindowInsetsControllerCompat(window, window.decorView)
 
         // Keeps the recovery key and PIN screens out of Recents thumbnails and screenshots.
-        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+        if (!resources.getBoolean(R.bool.allow_screenshots)) {
+            window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+        }
 
         val repo = ShieldApplication.instance.preferencesRepository
         authManager = ParentAuthManager(repo)
@@ -3806,6 +3808,7 @@ private fun grantLogCodeText(code: String): String = when {
     code == com.shieldchild.app.data.GrantLog.REST_OF_TODAY -> str(R.string.no_limit_rest_of_today)
     code == com.shieldchild.app.data.GrantLog.BEDTIME_OFF -> str(R.string.bedtime_off_tonight)
     code == com.shieldchild.app.data.GrantLog.INSTANT_OFF -> str(R.string.instant_lock_off)
+    code == com.shieldchild.app.data.GrantLog.CLOCK_CHANGED -> str(R.string.log_clock_changed)
     code.startsWith("MINUTES:") -> str(R.string.min_2, code.removePrefix("MINUTES:"))
     else -> code
 }
