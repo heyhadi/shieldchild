@@ -19,8 +19,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Native Bridge Module connecting React Native UI to Android Core Enforcement.
- * Can be wrapped with ReactContextBaseJavaModule when compiling with React Native dependencies.
+ * Native Bridge Module connecting UI layer to Android Core Enforcement.
+ * Handles inter-process communication and policy enforcement hooks.
  */
 class ShieldBridgeModule(private val context: Context) {
 

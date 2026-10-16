@@ -1,23 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
   <defs>
     <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#1E293B" />
-      <stop offset="100%" stop-color="#0F172A" />
+      <stop offset="0%" stop-color="#243028" />
+      <stop offset="100%" stop-color="#141B16" />
     </linearGradient>
     <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#3B82F6" />
-      <stop offset="100%" stop-color="#1D4ED8" />
+      <stop offset="0%" stop-color="#2E7D56" />
+      <stop offset="100%" stop-color="#1E5B3E" />
     </linearGradient>
     <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#60A5FA" />
-      <stop offset="100%" stop-color="#3B82F6" />
+      <stop offset="0%" stop-color="#4E9E74" />
+      <stop offset="100%" stop-color="#2E7D56" />
     </linearGradient>
     <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#2563EB" flood-opacity="0.35"/>
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#1E5B3E" flood-opacity="0.4"/>
     </filter>
   </defs>
   <!-- Squircle Base -->
-  <rect x="8" y="8" width="112" height="112" rx="32" fill="url(#bgGrad)" stroke="#334155" stroke-width="2"/>
+  <rect x="8" y="8" width="112" height="112" rx="32" fill="url(#bgGrad)" stroke="#384C3F" stroke-width="2"/>
   <!-- Shield Symbol -->
   <g transform="translate(24, 20) scale(3.33)" filter="url(#glow)">
     <path fill="url(#shieldGrad)" d="M12,1L3,5v6c0,5.55 3.84,10.74 9,12c5.16,-1.26 9,-6.45 9,-12V5L12,1z"/>
