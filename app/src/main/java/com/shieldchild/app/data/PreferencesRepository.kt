@@ -24,6 +24,9 @@ class PreferencesRepository(
 
     init {
         removeLegacySharedRecoveryKey()
+        // v1.0.0 saved "911" as the default number; it's now the parent's phone ("Call parent"),
+        // and real emergencies use the system emergency dialer.
+        if (prefs.getString(KEY_EMERGENCY_PHONE, null) == "911") prefs.edit().remove(KEY_EMERGENCY_PHONE).apply()
     }
 
     // --- Authentication & Security ---
@@ -100,7 +103,7 @@ class PreferencesRepository(
             curfewEndMinute = prefs.getInt(KEY_CURFEW_END_M, 0),
             isInstantLocked = prefs.getBoolean(KEY_INSTANT_LOCKED, false),
             bonusMinutesToday = prefs.getLong(KEY_BONUS_MINUTES, 0L),
-            emergencyPhoneNumber = prefs.getString(KEY_EMERGENCY_PHONE, "911") ?: "911"
+            emergencyPhoneNumber = prefs.getString(KEY_EMERGENCY_PHONE, "") ?: ""
         )
     }
 

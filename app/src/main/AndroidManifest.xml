@@ -50,16 +50,10 @@
             </intent-filter>
         </activity>
 
-        <!-- Onboarding & Permissions Wizard -->
-        <activity
-            android:name=".ui.onboarding.PermissionSetupActivity"
-            android:exported="false"
-            android:launchMode="singleTop" />
-
         <!-- Total Phone Curfew Lockdown Screen -->
         <activity
             android:name=".ui.curfew.CurfewLockActivity"
-            android:exported="true"
+            android:exported="false"
             android:launchMode="singleInstance"
             android:excludeFromRecents="true"
             android:showWhenLocked="true"
@@ -118,7 +112,6 @@
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
-                <action android:name="android.intent.action.REBOOT" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>

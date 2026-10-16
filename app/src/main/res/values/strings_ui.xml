@@ -70,8 +70,8 @@
     <string name="hours_mins_locked_every_night">%1$s hours %2$s mins locked every night</string>
     <string name="hours_locked_every_night">%1$s hours locked every night</string>
     <string name="emergency_calls">Emergency calls</string>
-    <string name="can_always_call_this_number">%1$s can always call this number, even when locked.</string>
-    <string name="emergency_number">Emergency number</string>
+    <string name="can_always_call_this_number">%1$s can call this number from the lock screen. Emergency calls (112/911) always work, even without it.</string>
+    <string name="emergency_number">Parent\'s phone</string>
     <string name="call">Call</string>
     <string name="how_you_unlock_parent_controls">How you unlock parent controls.</string>
     <string name="kid_s_profile">Kid\'s Profile</string>
@@ -207,9 +207,9 @@
     <string name="hardware_not_enrolled">Hardware not enrolled</string>
     <string name="turn_on">Turn on</string>
     <string name="only_turn_this_on_if">Only turn this on if your child has no fingerprint saved on this phone. Any fingerprint saved here could unlock parent mode. If a new fingerprint is added later, fingerprint unlock turns itself off.</string>
-    <string name="emergency_sos_contact">Emergency SOS Contact</string>
-    <string name="can_call_even_when_locked">%1$s can call even when locked.</string>
-    <string name="e_g_911_or_parent">e.g. 911 or Parent\'s Phone</string>
+    <string name="emergency_sos_contact">Parent\'s phone</string>
+    <string name="can_call_even_when_locked">%1$s can call or text you from the lock screen. Emergency calls always work.</string>
+    <string name="e_g_911_or_parent">e.g. 0812 3456 7890</string>
     <string name="activate_protection_armor">Activate Protection Armor</string>
     <string name="grant_these_permissions_to_enforce">Grant these permissions to enforce screen time limits, block unauthorized app deletion, and prevent bypass attempts.</string>
     <string name="disables_the_android_uninstall_button">Disables the Android uninstall button so your child cannot delete ShieldChild.</string>
@@ -378,4 +378,7 @@
     <string name="day_fri">Fri</string>
     <string name="day_sat">Sat</string>
     <string name="day_sun">Sun</string>
+    <string name="call_parent">Call parent</string>
+    <string name="method_system">ShieldChild</string>
+    <string name="log_clock_changed">Clock changed, phone locked</string>
 </resources>

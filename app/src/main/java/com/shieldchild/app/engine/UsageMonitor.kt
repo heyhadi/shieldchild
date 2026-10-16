@@ -18,7 +18,8 @@ class UsageMonitor(private val context: Context) {
         context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
 
     /**
-     * Aggregates screen time from 00:00:00 of the current day until now.
+     * Screen time from 00:00 today until now. Per-app totals are kept in milliseconds and only
+     * turned into minutes at the end, so many short sessions still add up.
      */
     fun queryDailyUsage(): DailyUsageSummary {
         val usm = usageStatsManager ?: return DailyUsageSummary(0L, emptyMap())
@@ -34,50 +35,36 @@ class UsageMonitor(private val context: Context) {
 
         val events = usm.queryEvents(startOfDay, now)
         val event = UsageEvents.Event()
-
-        val appUsageMillis = mutableMapOf<String, Long>()
-        val appLastResume = mutableMapOf<String, Long>()
-
+        val list = ArrayList<UsageEventLite>()
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
             val pkg = event.packageName ?: continue
-
-            // Exclude system launchers, system UI and ShieldChild itself
-            if (isSystemPackage(pkg)) continue
-
-            when (event.eventType) {
-                UsageEvents.Event.ACTIVITY_RESUMED -> {
-                    appLastResume[pkg] = event.timeStamp
-                }
-                UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED -> {
-                    val resumedAt = appLastResume.remove(pkg)
-                    if (resumedAt != null && event.timeStamp > resumedAt) {
-                        val duration = event.timeStamp - resumedAt
-                        appUsageMillis[pkg] = (appUsageMillis[pkg] ?: 0L) + duration
-                    }
-                }
-            }
+            list.add(UsageEventLite(pkg, event.className ?: "", event.eventType, event.timeStamp))
         }
 
-        // Account for currently active app
-        for ((pkg, resumedAt) in appLastResume) {
-            if (now > resumedAt) {
-                val duration = now - resumedAt
-                appUsageMillis[pkg] = (appUsageMillis[pkg] ?: 0L) + duration
-            }
-        }
-
-        val perAppMinutes = appUsageMillis.mapValues { (_, millis) -> millis / 60000L }
-        // The parent's own use during a parent session doesn't count against the child.
-        // shortcut: per-app totals still include it; split by app if parents use limited apps a lot.
+        val excluded = excludedPackages()
+        val perAppMillis = aggregate(list, startOfDay, now) { it in excluded }
         val parentMinutes = (context.applicationContext as? com.shieldchild.app.ShieldApplication)
             ?.preferencesRepository?.getParentUsedMinutesToday() ?: 0L
-        val totalMinutes = (perAppMinutes.values.sum() - parentMinutes).coerceAtLeast(0L)
+        // The parent's own use during a parent session doesn't count against the child.
+        // shortcut: per-app totals still include it; split by app if parents use limited apps a lot.
+        val totalMinutes = (perAppMillis.values.sum() / 60_000L - parentMinutes).coerceAtLeast(0L)
 
         return DailyUsageSummary(
             totalDeviceUsageMinutes = totalMinutes,
-            perAppUsageMinutes = perAppMinutes
+            perAppUsageMinutes = perAppMillis.mapValues { (_, millis) -> millis / 60_000L }
         )
+    }
+
+    /** This app, System UI, the home screen (whichever launcher this phone uses) and keyboards. */
+    private fun excludedPackages(): Set<String> {
+        val pm = context.packageManager
+        val home = pm.queryIntentActivities(
+            android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME), 0
+        ).map { it.activityInfo.packageName }
+        val keyboards = (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)
+            ?.enabledInputMethodList?.map { it.packageName }.orEmpty()
+        return setOf(context.packageName, "com.android.systemui") + home + keyboards
     }
 
     /**
@@ -99,11 +86,50 @@ class UsageMonitor(private val context: Context) {
         return topPackage
     }
 
-    private fun isSystemPackage(packageName: String): Boolean {
-        return packageName == context.packageName ||
-                packageName == "com.android.systemui" ||
-                packageName == "com.google.android.apps.nexuslauncher" ||
-                packageName == "com.android.launcher" ||
-                packageName == "com.google.android.inputmethod.latin"
+    companion object {
+        /**
+         * Foreground time per package in milliseconds. An app counts as in front from its first
+         * activity resuming until its last one pauses, so apps with several screens aren't
+         * double-counted. A pause with no resume today means the app was opened before midnight.
+         */
+        fun aggregate(
+            events: List<UsageEventLite>,
+            startOfDay: Long,
+            now: Long,
+            isExcluded: (String) -> Boolean
+        ): Map<String, Long> {
+            val totals = mutableMapOf<String, Long>()
+            val resumed = mutableMapOf<String, MutableSet<String>>()
+            val since = mutableMapOf<String, Long>()
+            val seen = mutableSetOf<String>()
+            fun add(pkg: String, millis: Long) {
+                if (millis > 0) totals[pkg] = (totals[pkg] ?: 0L) + millis
+            }
+            for (e in events) {
+                if (isExcluded(e.packageName)) continue
+                val key = e.packageName + "/" + e.className
+                val open = resumed.getOrPut(e.packageName) { mutableSetOf() }
+                when (e.type) {
+                    UsageEvents.Event.ACTIVITY_RESUMED -> {
+                        if (open.isEmpty()) since[e.packageName] = e.time
+                        open.add(e.className)
+                    }
+                    UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED -> {
+                        if (open.remove(e.className)) {
+                            if (open.isEmpty()) add(e.packageName, e.time - (since.remove(e.packageName) ?: e.time))
+                        } else if (key !in seen && open.isEmpty()) {
+                            add(e.packageName, e.time - startOfDay)
+                        }
+                    }
+                }
+                seen.add(key)
+            }
+            for ((pkg, start) in since) {
+                if (resumed[pkg].orEmpty().isNotEmpty()) add(pkg, now - start)
+            }
+            return totals
+        }
     }
 }
+
+data class UsageEventLite(val packageName: String, val className: String, val type: Int, val time: Long)
