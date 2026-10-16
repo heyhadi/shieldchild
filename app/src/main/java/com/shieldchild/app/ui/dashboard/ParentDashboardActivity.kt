@@ -2319,6 +2319,7 @@ fun ReleaseSecurityScreen(
                         OutlinedButton(
                             onClick = {
                                 try {
+                                    ShieldAccessibilityService.allowParentUninstall() // parent-opened Settings, not tampering
                                     context.startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
                                 } catch (_: Exception) {}
                             },
@@ -2670,6 +2671,7 @@ fun ReleaseSecurityScreen(
                                         putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
                                         putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "ShieldChild requires Device Administrator to prevent unauthorized uninstallation by children.")
                                     }
+                                    ShieldAccessibilityService.allowParentUninstall() // parent-opened Settings, not tampering
                                     context.startActivity(intent)
                                 } catch (_: Exception) {}
                             },

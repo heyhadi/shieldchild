@@ -255,6 +255,7 @@ fun FirstTimeSetupScreen(
                         },
                         onOpenBiometricSettings = {
                             try {
+                                ShieldAccessibilityService.allowParentUninstall() // our own Settings screens below, not tampering
                                 context.startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
                             } catch (_: Exception) {
                                 Toast.makeText(context, str(R.string.please_open_android_settings_security), Toast.LENGTH_SHORT).show()
@@ -277,6 +278,7 @@ fun FirstTimeSetupScreen(
                         hasNotification = hasNotification,
                         onGrantUsage = {
                             try {
+                                ShieldAccessibilityService.allowParentUninstall()
                                 context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
                             } catch (_: Exception) {
                                 Toast.makeText(context, str(R.string.open_settings_apps_special_app), Toast.LENGTH_LONG).show()
@@ -288,6 +290,7 @@ fun FirstTimeSetupScreen(
                                     Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                                     Uri.parse("package:${context.packageName}")
                                 )
+                                ShieldAccessibilityService.allowParentUninstall()
                                 context.startActivity(intent)
                             } catch (_: Exception) {
                                 Toast.makeText(context, str(R.string.open_settings_apps_special_app_2), Toast.LENGTH_LONG).show()
@@ -299,6 +302,7 @@ fun FirstTimeSetupScreen(
                                     putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, ShieldDeviceAdminReceiver.getComponentName(context))
                                     putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "ShieldChild requires Device Administrator to prevent unauthorized uninstallation by children.")
                                 }
+                                ShieldAccessibilityService.allowParentUninstall()
                                 context.startActivity(intent)
                             } catch (_: Exception) {
                                 Toast.makeText(context, str(R.string.open_settings_security_device_admin), Toast.LENGTH_LONG).show()
@@ -306,6 +310,7 @@ fun FirstTimeSetupScreen(
                         },
                         onGrantAccessibility = {
                             try {
+                                ShieldAccessibilityService.allowParentUninstall()
                                 context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                             } catch (_: Exception) {
                                 Toast.makeText(context, str(R.string.open_settings_accessibility_shieldchild), Toast.LENGTH_LONG).show()
@@ -317,6 +322,7 @@ fun FirstTimeSetupScreen(
                                     val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
                                         putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
                                     }
+                                    ShieldAccessibilityService.allowParentUninstall()
                                     context.startActivity(intent)
                                 }
                             } catch (_: Exception) {
