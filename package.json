@@ -2,15 +2,8 @@
   "name": "shieldchild-app",
   "version": "1.0.0",
   "description": "Parental Lock & Device Screen Time Management App for Android with Jetpack Compose UI and Native Enforcement",
-  "main": "index.js",
   "scripts": {
-    "start": "react-native start",
-    "android": "react-native run-android",
     "test": "jest"
-  },
-  "dependencies": {
-    "react": "18.3.1",
-    "react-native": "0.76.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -29,6 +22,14 @@
     "coverageReporters": [
       "text",
       "lcov"
-    ]
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 100,
+        "functions": 100,
+        "lines": 100,
+        "statements": 100
+      }
+    }
   }
 }

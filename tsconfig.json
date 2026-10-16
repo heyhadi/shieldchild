@@ -4,7 +4,6 @@
     "module": "CommonJS",
     "lib": ["ES2022"],
     "allowJs": true,
-    "jsx": "react-native",
     "noEmit": true,
     "isolatedModules": true,
     "strict": true,
