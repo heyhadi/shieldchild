@@ -18,7 +18,10 @@
       <div class="wrap">
         <nav class="nav" aria-label="Main">
           <a class="brand" href="./"><img src="images/icon.svg" alt="" />ShieldChild</a>
-          <div class="nav-links">
+          <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-label="Toggle navigation menu" aria-controls="navLinks">
+            <span class="nav-toggle-icon"></span>
+          </button>
+          <div class="nav-links" id="navLinks">
             <a class="link" href="#features">Features</a>
             <a class="link" href="#screens">Screenshots</a>
             <a class="link" href="#get">Install</a>
@@ -289,5 +292,38 @@
         </div>
       </div>
     </footer>
+
+    <script>
+      (function() {
+        const navToggle = document.getElementById('navToggle');
+        const navLinks = document.getElementById('navLinks');
+        if (!navToggle || !navLinks) return;
+
+        if (window.location.hash === '#menu') {
+          navLinks.classList.add('open');
+          navToggle.setAttribute('aria-expanded', 'true');
+        }
+
+        navToggle.addEventListener('click', function(e) {
+          e.stopPropagation();
+          const isOpen = navLinks.classList.toggle('open');
+          navToggle.setAttribute('aria-expanded', isOpen);
+        });
+
+        navLinks.querySelectorAll('a').forEach(function(link) {
+          link.addEventListener('click', function() {
+            navLinks.classList.remove('open');
+            navToggle.setAttribute('aria-expanded', 'false');
+          });
+        });
+
+        document.addEventListener('click', function(e) {
+          if (!navToggle.contains(e.target) && !navLinks.contains(e.target)) {
+            navLinks.classList.remove('open');
+            navToggle.setAttribute('aria-expanded', 'false');
+          }
+        });
+      })();
+    </script>
   </body>
 </html>
