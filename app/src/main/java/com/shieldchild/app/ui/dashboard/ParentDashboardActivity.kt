@@ -613,19 +613,29 @@ fun ReleaseOverviewScreen(
                                 )
                             }
 
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(horizontal = 14.dp)
+                            ) {
                                 Text(
                                     text = if (isUnlimitedToday) str(R.string.no_limit) else str(R.string.h_m, remainingMinutes / 60, remainingMinutes % 60),
-                                    fontSize = 22.sp,
+                                    fontSize = if (isUnlimitedToday) 15.sp else 22.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = colInk,
-                                    letterSpacing = (-0.5).sp
+                                    letterSpacing = if (isUnlimitedToday) 0.sp else (-0.5).sp,
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = if (isUnlimitedToday) 18.sp else 24.sp,
+                                    maxLines = 2
                                 )
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = if (isUnlimitedToday) "today" else str(R.string.left_today),
-                                    fontSize = 12.sp,
+                                    text = if (isUnlimitedToday) str(R.string.today) else str(R.string.left_today),
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = colInkMuted
+                                    color = colInkMuted,
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = 13.sp,
+                                    maxLines = 2
                                 )
                             }
                         }

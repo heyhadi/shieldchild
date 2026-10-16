@@ -26,6 +26,10 @@ class AppShieldOverlayManager(private val context: Context) {
     }
 
     fun showAppLock(packageName: String, appName: String, limitMinutes: Long, usedMinutes: Long) {
+        if (!com.shieldchild.app.engine.ProfileGuard.isScreenInteractiveForProfile(context)) {
+            dismiss()
+            return
+        }
         if (overlayView != null) {
             if (currentLockedPackage == packageName) return // Already showing for this app
             dismiss()

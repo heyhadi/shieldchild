@@ -4,6 +4,8 @@ import android.content.ContextWrapper
 import android.content.SharedPreferences
 import com.shieldchild.app.data.PreferencesRepository
 
+open class TestContext : ContextWrapper(null)
+
 fun testRepo(store: FakePrefs = FakePrefs(), clock: () -> Long = { 1_000_000L }) =
     PreferencesRepository(object : ContextWrapper(null) {
         override fun getSharedPreferences(name: String?, mode: Int): SharedPreferences = store

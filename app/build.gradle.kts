@@ -29,8 +29,8 @@ android {
         targetSdk = 36
         // Release tags are "v<versionName>-<versionCode>" (e.g. v1.0.1-2); the in-app updater
         // reads the number after the dash. Bump both for every GitHub release.
-        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 2
-        versionName = (project.findProperty("versionName") as String?) ?: "1.0.1"
+        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 24
+        versionName = (project.findProperty("versionName") as String?) ?: "1.0.24"
         // Only for taking README/website screenshots locally (-PallowScreenshots=true). Never set in CI.
         // A resource (read at run time) rather than a BuildConfig constant, which Kotlin inlines and
         // incremental builds can leave stale.

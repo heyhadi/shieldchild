@@ -15,6 +15,7 @@
     <string name="no_limit">No limit</string>
     <string name="h_m">%1$sh %2$sm</string>
     <string name="left_today">left today</string>
+    <string name="today">today</string>
     <string name="used">Used</string>
     <string name="daily_allowance">Daily allowance</string>
     <string name="t_15_min">15 min</string>

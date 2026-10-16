@@ -33,7 +33,9 @@ class ShieldApplication : Application() {
                 access = preferencesRepository.getAccessState()
             )
             if (reason != null) {
-                CurfewLockLauncher.launch(this, reason)
+                if (com.shieldchild.app.engine.ProfileGuard.isScreenInteractiveForProfile(this)) {
+                    CurfewLockLauncher.launch(this, reason)
+                }
             }
         }
     }
@@ -65,7 +67,7 @@ class ShieldApplication : Application() {
             ).apply {
                 description = str(R.string.immediate_full_screen_lockdown_enforcement)
                 setShowBadge(false)
-                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                lockscreenVisibility = Notification.VISIBILITY_PRIVATE
                 setBypassDnd(true)
             }
 

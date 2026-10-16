@@ -40,7 +40,7 @@ class BootReceiver : BroadcastReceiver() {
                 access = repo.getAccessState()
             )
 
-            if (reason != null) {
+            if (reason != null && com.shieldchild.app.engine.ProfileGuard.isScreenInteractiveForProfile(context)) {
                 // Immediately force curfew lock activity on screen!
                 CurfewLockLauncher.launch(context, reason)
             }
