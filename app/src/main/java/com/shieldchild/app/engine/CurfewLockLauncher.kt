@@ -1,5 +1,6 @@
 package com.shieldchild.app.engine
 
+import com.shieldchild.app.i18n.str
 import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -8,6 +9,7 @@ import android.content.Intent
 import androidx.core.app.NotificationCompat
 import com.shieldchild.app.R
 import com.shieldchild.app.ShieldApplication
+import com.shieldchild.app.data.AccessState
 import com.shieldchild.app.data.DeviceCurfewPolicy
 import com.shieldchild.app.data.LockReason
 import com.shieldchild.app.ui.curfew.CurfewLockActivity
@@ -25,23 +27,9 @@ object CurfewLockLauncher {
         isDailyExceeded: Boolean,
         engine: PolicyEngine = PolicyEngine(),
         cal: Calendar = Calendar.getInstance(),
-        isOverrideActive: Boolean = false
+        access: AccessState = AccessState()
     ): LockReason? {
-        if (policy.isInstantLocked) {
-            return LockReason.PARENT_INSTANT_FREEZE
-        }
-        if (isOverrideActive) {
-            return null
-        }
-        if (policy.isCurfewScheduled && engine.isWithinCurfewWindow(policy, cal)) {
-            return LockReason.SCHEDULED_BEDTIME_CURFEW
-        }
-        val dayNames = arrayOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
-        val currentDay = dayNames[cal.get(Calendar.DAY_OF_WEEK) - 1]
-        if (isDailyExceeded && policy.isDailyLimitEnabled && !policy.unlimitedDays.contains(currentDay)) {
-            return LockReason.TOTAL_SCREEN_TIME_EXCEEDED
-        }
-        return null
+        return engine.evaluateDeviceLock(policy, isDailyExceeded, cal, access)
     }
 
     /**
@@ -76,7 +64,7 @@ object CurfewLockLauncher {
             if (nm != null) {
                 val notification = NotificationCompat.Builder(context, ShieldApplication.CHANNEL_LOCK)
                     .setSmallIcon(R.drawable.ic_shield)
-                    .setContentTitle("Curfew Lockdown Active")
+                    .setContentTitle(str(R.string.curfew_lockdown_active))
                     .setContentText(getLockDescription(reason))
                     .setPriority(NotificationCompat.PRIORITY_MAX)
                     .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -100,9 +88,9 @@ object CurfewLockLauncher {
 
     private fun getLockDescription(reason: LockReason): String {
         return when (reason) {
-            LockReason.PARENT_INSTANT_FREEZE -> "Instant lock activated by parent"
-            LockReason.SCHEDULED_BEDTIME_CURFEW -> "Bedtime curfew is in effect"
-            LockReason.TOTAL_SCREEN_TIME_EXCEEDED -> "Daily screen time limit reached"
+            LockReason.PARENT_INSTANT_FREEZE -> str(R.string.instant_lock_activated_by_parent)
+            LockReason.SCHEDULED_BEDTIME_CURFEW -> str(R.string.bedtime_curfew_is_in_effect)
+            LockReason.TOTAL_SCREEN_TIME_EXCEEDED -> str(R.string.daily_screen_time_limit_reached)
         }
     }
 }

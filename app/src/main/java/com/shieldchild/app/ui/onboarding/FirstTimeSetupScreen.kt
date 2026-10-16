@@ -1,5 +1,8 @@
 package com.shieldchild.app.ui.onboarding
 
+import com.shieldchild.app.i18n.str
+import com.shieldchild.app.R
+import com.shieldchild.app.ui.theme.Shield
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
@@ -108,14 +111,14 @@ fun FirstTimeSetupScreen(
     }
 
     // Design Tokens
-    val colBg = Color(0xFFF5F6F1)
-    val colPrimary = Color(0xFF1E5B3E)
-    val colPrimaryContainer = Color(0xFFDCEBDD)
-    val colOnPrimaryContainer = Color(0xFF123D28)
-    val colInk = Color(0xFF17201A)
-    val colInkMuted = Color(0xFF4B5750)
-    val colLineSubtle = Color(0xFFE3E7DF)
-    val colError = Color(0xFF8C2118)
+    val colBg = Shield.colors.canvas
+    val colPrimary = Shield.colors.primary
+    val colPrimaryContainer = Shield.colors.primaryContainer
+    val colOnPrimaryContainer = Shield.colors.onPrimaryContainer
+    val colInk = Shield.colors.ink
+    val colInkMuted = Shield.colors.inkMuted
+    val colLineSubtle = Shield.colors.line
+    val colError = Shield.colors.error
 
     Box(
         modifier = Modifier
@@ -155,16 +158,16 @@ fun FirstTimeSetupScreen(
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = "ShieldChild Setup",
+                            text = str(R.string.shieldchild_setup),
                             fontSize = 18.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = colInk
                         )
                         Text(
                             text = when (currentStep) {
-                                1 -> "Step 1 of 3: Child Profile"
-                                2 -> "Step 2 of 3: Parent Security"
-                                else -> "Step 3 of 3: Protection Permissions"
+                                1 -> str(R.string.step_1_of_3_child)
+                                2 -> str(R.string.step_2_of_3_parent)
+                                else -> str(R.string.step_3_of_3_protection)
                             },
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.SemiBold,
@@ -240,20 +243,13 @@ fun FirstTimeSetupScreen(
                         isBiometricAvailable = isBiometricHardwareAvailable,
                         isFingerprintVerified = isFingerprintVerified,
                         onVerifyFingerprint = {
-                            biometricHelper.promptBiometricAuth(
-                                title = "Parent Biometric Setup",
-                                subtitle = "Scan fingerprint to authorize biometric parent unlock",
-                                negativeButtonText = "Cancel",
+                            biometricHelper.enable(
                                 onSuccess = {
                                     isFingerprintVerified = true
-                                    repo.setBiometricEnabled(true)
-                                    Toast.makeText(context, "Parent fingerprint verified!", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, str(R.string.parent_fingerprint_turned_on), Toast.LENGTH_SHORT).show()
                                 },
-                                onError = { _, err ->
+                                onError = { err ->
                                     Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
-                                },
-                                onFailed = {
-                                    Toast.makeText(context, "Fingerprint not recognized.", Toast.LENGTH_SHORT).show()
                                 }
                             )
                         },
@@ -261,7 +257,7 @@ fun FirstTimeSetupScreen(
                             try {
                                 context.startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
                             } catch (_: Exception) {
-                                Toast.makeText(context, "Please open Android Settings > Security.", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, str(R.string.please_open_android_settings_security), Toast.LENGTH_SHORT).show()
                             }
                         },
                         errorMessage = step2Error,
@@ -283,7 +279,7 @@ fun FirstTimeSetupScreen(
                             try {
                                 context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
                             } catch (_: Exception) {
-                                Toast.makeText(context, "Open Settings > Apps > Special app access > Usage access", Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, str(R.string.open_settings_apps_special_app), Toast.LENGTH_LONG).show()
                             }
                         },
                         onGrantOverlay = {
@@ -294,7 +290,7 @@ fun FirstTimeSetupScreen(
                                 )
                                 context.startActivity(intent)
                             } catch (_: Exception) {
-                                Toast.makeText(context, "Open Settings > Apps > Special app access > Display over apps", Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, str(R.string.open_settings_apps_special_app_2), Toast.LENGTH_LONG).show()
                             }
                         },
                         onGrantDeviceAdmin = {
@@ -305,14 +301,14 @@ fun FirstTimeSetupScreen(
                                 }
                                 context.startActivity(intent)
                             } catch (_: Exception) {
-                                Toast.makeText(context, "Open Settings > Security > Device admin apps", Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, str(R.string.open_settings_security_device_admin), Toast.LENGTH_LONG).show()
                             }
                         },
                         onGrantAccessibility = {
                             try {
                                 context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                             } catch (_: Exception) {
-                                Toast.makeText(context, "Open Settings > Accessibility > ShieldChild", Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, str(R.string.open_settings_accessibility_shieldchild), Toast.LENGTH_LONG).show()
                             }
                         },
                         onGrantNotification = {
@@ -324,7 +320,7 @@ fun FirstTimeSetupScreen(
                                     context.startActivity(intent)
                                 }
                             } catch (_: Exception) {
-                                Toast.makeText(context, "Open Settings > Apps > ShieldChild > Notifications", Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, str(R.string.open_settings_apps_shieldchild_notifications), Toast.LENGTH_LONG).show()
                             }
                         },
                         colPrimary = colPrimary,
@@ -351,7 +347,7 @@ fun FirstTimeSetupScreen(
                         onClick = { currentStep-- },
                         shape = RoundedCornerShape(24.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFEEF1EA),
+                            containerColor = Shield.colors.surfaceVariant,
                             contentColor = colInkMuted
                         ),
                         modifier = Modifier
@@ -360,7 +356,7 @@ fun FirstTimeSetupScreen(
                     ) {
                         Icon(Icons.Default.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Back", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Text(str(R.string.back), fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -369,7 +365,7 @@ fun FirstTimeSetupScreen(
                         when (currentStep) {
                             1 -> {
                                 if (childName.trim().isEmpty()) {
-                                    step1Error = "Please enter your child's name"
+                                    step1Error = str(R.string.please_enter_your_child_s)
                                 } else {
                                     currentStep = 2
                                 }
@@ -377,10 +373,10 @@ fun FirstTimeSetupScreen(
                             2 -> {
                                 when {
                                     pin.length < 4 -> {
-                                        step2Error = "PIN must be at least 4 digits"
+                                        step2Error = str(R.string.pin_must_be_at_least)
                                     }
                                     pin != confirmPin -> {
-                                        step2Error = "PINs do not match"
+                                        step2Error = str(R.string.pins_do_not_match)
                                     }
                                     else -> {
                                         currentStep = 3
@@ -410,7 +406,7 @@ fun FirstTimeSetupScreen(
                                     }
                                 } catch (_: Exception) {}
 
-                                Toast.makeText(context, "Protection activated for ${childName.trim()}!", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, str(R.string.protection_activated_for, childName.trim()), Toast.LENGTH_SHORT).show()
                                 onSetupFinished()
                             }
                         }
@@ -418,14 +414,14 @@ fun FirstTimeSetupScreen(
                     shape = RoundedCornerShape(24.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = colPrimary,
-                        contentColor = Color.White
+                        contentColor = Shield.colors.onPrimary
                     ),
                     modifier = Modifier
                         .weight(if (currentStep > 1) 1.5f else 1f)
                         .height(52.dp)
                 ) {
                     Text(
-                        text = if (currentStep == 3) "Start Protecting" else "Continue",
+                        text = if (currentStep == 3) str(R.string.start_protecting) else str(R.string.action_continue),
                         fontSize = 15.5.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -462,7 +458,7 @@ private fun Step1ChildDetails(
         item {
             Surface(
                 shape = RoundedCornerShape(26.dp),
-                color = Color.White,
+                color = Shield.colors.card,
                 border = BorderStroke(1.dp, colLineSubtle),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -480,7 +476,7 @@ private fun Step1ChildDetails(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Text(
-                        text = "Who is this phone for?",
+                        text = str(R.string.who_is_this_phone_for),
                         fontSize = 22.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = colInk,
@@ -490,7 +486,7 @@ private fun Step1ChildDetails(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     Text(
-                        text = "Enter your child's name to personalize screen time rules, notifications, and emergency dialing.",
+                        text = str(R.string.enter_your_child_s_name),
                         fontSize = 13.5.sp,
                         fontWeight = FontWeight.Medium,
                         color = colInkMuted,
@@ -500,7 +496,7 @@ private fun Step1ChildDetails(
                     Spacer(modifier = Modifier.height(20.dp))
 
                     Text(
-                        text = "CHILD'S NAME",
+                        text = str(R.string.child_s_name),
                         fontSize = 11.5.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = colInkMuted,
@@ -511,8 +507,8 @@ private fun Step1ChildDetails(
 
                     Surface(
                         shape = RoundedCornerShape(16.dp),
-                        color = Color(0xFFEEF1EA),
-                        border = BorderStroke(1.dp, if (errorMessage != null) colError else Color(0xFFE3E7DF)),
+                        color = Shield.colors.surfaceVariant,
+                        border = BorderStroke(1.dp, if (errorMessage != null) colError else Shield.colors.line),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(56.dp)
@@ -537,7 +533,7 @@ private fun Step1ChildDetails(
                                 decorationBox = { innerTextField ->
                                     if (childName.isEmpty()) {
                                         Text(
-                                            text = "e.g. Leo, Emma, Alex",
+                                            text = str(R.string.e_g_leo_emma_alex),
                                             fontSize = 17.sp,
                                             fontWeight = FontWeight.Medium,
                                             color = colInkMuted.copy(alpha = 0.5f)
@@ -566,20 +562,20 @@ private fun Step1ChildDetails(
         item {
             Surface(
                 shape = RoundedCornerShape(26.dp),
-                color = Color.White,
+                color = Shield.colors.card,
                 border = BorderStroke(1.dp, colLineSubtle),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(22.dp)) {
                     Text(
-                        text = "Daily Screen Time Allowance",
+                        text = str(R.string.daily_screen_time_allowance),
                         fontSize = 17.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = colInk
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Target limit before total phone curfew locks the device.",
+                        text = str(R.string.target_limit_before_total_phone),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
                         color = colInkMuted
@@ -588,10 +584,10 @@ private fun Step1ChildDetails(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     val presets = listOf(
-                        90L to "1h 30m",
-                        120L to "2h 00m",
-                        150L to "2h 30m",
-                        180L to "3h 00m"
+                        90L to str(R.string.t_1h_30m),
+                        120L to str(R.string.t_2h_00m),
+                        150L to str(R.string.t_2h_30m),
+                        180L to str(R.string.t_3h_00m)
                     )
 
                     Row(
@@ -602,7 +598,7 @@ private fun Step1ChildDetails(
                             val isSelected = dailyLimitMinutes == minutes
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
-                                color = if (isSelected) colPrimary else Color(0xFFF5F6F1),
+                                color = if (isSelected) colPrimary else Shield.colors.canvas,
                                 border = if (isSelected) null else BorderStroke(1.dp, colLineSubtle),
                                 modifier = Modifier
                                     .weight(1f)
@@ -617,7 +613,7 @@ private fun Step1ChildDetails(
                                         text = label,
                                         fontSize = 13.sp,
                                         fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
-                                        color = if (isSelected) Color.White else colInk
+                                        color = if (isSelected) Shield.colors.onPrimary else colInk
                                     )
                                 }
                             }
@@ -664,7 +660,7 @@ private fun Step2ParentSecurity(
         item {
             Surface(
                 shape = RoundedCornerShape(24.dp),
-                color = Color.White,
+                color = Shield.colors.card,
                 border = BorderStroke(1.dp, colLineSubtle),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -681,8 +677,8 @@ private fun Step2ParentSecurity(
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
-                            Text("Set Master PIN", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = colInk)
-                            Text("4 to 8 digit parent passcode", fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = colInkMuted)
+                            Text(str(R.string.set_master_pin), fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = colInk)
+                            Text(str(R.string.t_4_to_8_digit_parent), fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = colInkMuted)
                         }
                     }
 
@@ -696,8 +692,8 @@ private fun Step2ParentSecurity(
                         // Enter PIN
                         Surface(
                             shape = RoundedCornerShape(14.dp),
-                            color = Color(0xFFEEF1EA),
-                            border = BorderStroke(1.dp, Color(0xFFE3E7DF)),
+                            color = Shield.colors.surfaceVariant,
+                            border = BorderStroke(1.dp, Shield.colors.line),
                             modifier = Modifier
                                 .weight(1f)
                                 .height(52.dp)
@@ -719,7 +715,7 @@ private fun Step2ParentSecurity(
                                     decorationBox = { innerTextField ->
                                         if (pin.isEmpty()) {
                                             Text(
-                                                text = "PIN (••••)",
+                                                text = str(R.string.pin),
                                                 fontSize = 14.sp,
                                                 fontWeight = FontWeight.Medium,
                                                 color = colInkMuted.copy(alpha = 0.5f),
@@ -735,8 +731,8 @@ private fun Step2ParentSecurity(
                         // Confirm PIN
                         Surface(
                             shape = RoundedCornerShape(14.dp),
-                            color = Color(0xFFEEF1EA),
-                            border = BorderStroke(1.dp, Color(0xFFE3E7DF)),
+                            color = Shield.colors.surfaceVariant,
+                            border = BorderStroke(1.dp, Shield.colors.line),
                             modifier = Modifier
                                 .weight(1f)
                                 .height(52.dp)
@@ -758,7 +754,7 @@ private fun Step2ParentSecurity(
                                     decorationBox = { innerTextField ->
                                         if (confirmPin.isEmpty()) {
                                             Text(
-                                                text = "Confirm (••••)",
+                                                text = str(R.string.confirm_2),
                                                 fontSize = 14.sp,
                                                 fontWeight = FontWeight.Medium,
                                                 color = colInkMuted.copy(alpha = 0.5f),
@@ -789,7 +785,7 @@ private fun Step2ParentSecurity(
         item {
             Surface(
                 shape = RoundedCornerShape(24.dp),
-                color = Color.White,
+                color = Shield.colors.card,
                 border = BorderStroke(1.dp, colLineSubtle),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -805,7 +801,7 @@ private fun Step2ParentSecurity(
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFFEEF1EA),
+                                color = Shield.colors.surfaceVariant,
                                 modifier = Modifier.size(42.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -814,16 +810,16 @@ private fun Step2ParentSecurity(
                             }
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
-                                Text("Parent Biometric", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = colInk)
+                                Text(str(R.string.parent_biometric), fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = colInk)
                                 Text(
                                     text = when {
-                                        isFingerprintVerified -> "Fingerprint verified!"
-                                        isBiometricAvailable -> "Sensor ready"
-                                        else -> "Hardware not enrolled"
+                                        isFingerprintVerified -> str(R.string.fingerprint_unlock_on)
+                                        isBiometricAvailable -> str(R.string.optional)
+                                        else -> str(R.string.hardware_not_enrolled)
                                     },
                                     fontSize = 12.5.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = if (isFingerprintVerified || isBiometricAvailable) colPrimary else Color(0xFF8C2118)
+                                    color = if (isFingerprintVerified || isBiometricAvailable) colPrimary else Shield.colors.error
                                 )
                             }
                         }
@@ -834,16 +830,16 @@ private fun Step2ParentSecurity(
                                 shape = RoundedCornerShape(20.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = if (isFingerprintVerified) colPrimaryContainer else colPrimary,
-                                    contentColor = if (isFingerprintVerified) colOnPrimaryContainer else Color.White
+                                    contentColor = if (isFingerprintVerified) colOnPrimaryContainer else Shield.colors.onPrimary
                                 ),
                                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                             ) {
                                 if (isFingerprintVerified) {
                                     Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Verified", fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                                    Text(str(R.string.on), fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
                                 } else {
-                                    Text("Scan", fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                                    Text(str(R.string.turn_on), fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         } else {
@@ -853,14 +849,14 @@ private fun Step2ParentSecurity(
                                 border = BorderStroke(1.dp, colPrimary),
                                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
                             ) {
-                                Text("Enroll", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colPrimary)
+                                Text(str(R.string.enroll), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colPrimary)
                             }
                         }
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = "Android biometrics (fingerprint / face) unlock parent mode in one touch without typing your PIN each time.",
+                        text = str(R.string.only_turn_this_on_if),
                         fontSize = 12.5.sp,
                         fontWeight = FontWeight.Medium,
                         color = colInkMuted,
@@ -874,7 +870,7 @@ private fun Step2ParentSecurity(
         item {
             Surface(
                 shape = RoundedCornerShape(24.dp),
-                color = Color.White,
+                color = Shield.colors.card,
                 border = BorderStroke(1.dp, colLineSubtle),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -882,7 +878,7 @@ private fun Step2ParentSecurity(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFFEEF1EA),
+                            color = Shield.colors.surfaceVariant,
                             modifier = Modifier.size(42.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
@@ -891,9 +887,9 @@ private fun Step2ParentSecurity(
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
-                            Text("Emergency SOS Contact", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = colInk)
+                            Text(str(R.string.emergency_sos_contact), fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = colInk)
                             Text(
-                                text = "${childName.ifEmpty { "Child" }} can call even when locked.",
+                                text = str(R.string.can_call_even_when_locked, childName.ifEmpty { str(R.string.your_child) }),
                                 fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = colInkMuted
@@ -905,8 +901,8 @@ private fun Step2ParentSecurity(
 
                     Surface(
                         shape = RoundedCornerShape(14.dp),
-                        color = Color(0xFFEEF1EA),
-                        border = BorderStroke(1.dp, Color(0xFFE3E7DF)),
+                        color = Shield.colors.surfaceVariant,
+                        border = BorderStroke(1.dp, Shield.colors.line),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(50.dp)
@@ -931,7 +927,7 @@ private fun Step2ParentSecurity(
                                 decorationBox = { innerTextField ->
                                     if (emergencyPhone.isEmpty()) {
                                         Text(
-                                            text = "e.g. 911 or Parent's Phone",
+                                            text = str(R.string.e_g_911_or_parent),
                                             fontSize = 15.sp,
                                             fontWeight = FontWeight.Medium,
                                             color = colInkMuted.copy(alpha = 0.5f)
@@ -979,7 +975,7 @@ private fun Step3Permissions(
         item {
             Surface(
                 shape = RoundedCornerShape(26.dp),
-                color = Color.White,
+                color = Shield.colors.card,
                 border = BorderStroke(1.dp, colLineSubtle),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -997,7 +993,7 @@ private fun Step3Permissions(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Text(
-                        text = "Activate Protection Armor",
+                        text = str(R.string.activate_protection_armor),
                         fontSize = 22.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = colInk,
@@ -1007,7 +1003,7 @@ private fun Step3Permissions(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     Text(
-                        text = "Grant these permissions to enforce screen time limits, block unauthorized app deletion, and prevent bypass attempts.",
+                        text = str(R.string.grant_these_permissions_to_enforce),
                         fontSize = 13.5.sp,
                         fontWeight = FontWeight.Medium,
                         color = colInkMuted,
@@ -1021,7 +1017,7 @@ private fun Step3Permissions(
         item {
             Surface(
                 shape = RoundedCornerShape(22.dp),
-                color = Color.White,
+                color = Shield.colors.card,
                 border = BorderStroke(1.dp, colLineSubtle),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -1034,11 +1030,11 @@ private fun Step3Permissions(
                 ) {
                     Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Anti-Uninstall Protection", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colInk)
+                            Text(str(R.string.anti_uninstall_protection), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colInk)
                         }
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Disables the Android uninstall button so your child cannot delete ShieldChild.",
+                            text = str(R.string.disables_the_android_uninstall_button),
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.Medium,
                             color = colInkMuted
@@ -1056,7 +1052,7 @@ private fun Step3Permissions(
                             ) {
                                 Icon(Icons.Default.Check, contentDescription = null, tint = colPrimary, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Active", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colOnPrimaryContainer)
+                                Text(str(R.string.active), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colOnPrimaryContainer)
                             }
                         }
                     } else {
@@ -1065,11 +1061,11 @@ private fun Step3Permissions(
                             shape = RoundedCornerShape(20.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = colPrimary,
-                                contentColor = Color.White
+                                contentColor = Shield.colors.onPrimary
                             ),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                         ) {
-                            Text("Activate", fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                            Text(str(R.string.activate), fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1080,7 +1076,7 @@ private fun Step3Permissions(
         item {
             Surface(
                 shape = RoundedCornerShape(22.dp),
-                color = Color.White,
+                color = Shield.colors.card,
                 border = BorderStroke(1.dp, colLineSubtle),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -1092,10 +1088,10 @@ private fun Step3Permissions(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                        Text("Settings & App Guard", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colInk)
+                        Text(str(R.string.settings_app_guard), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colInk)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Instantly deflects attempts to force stop or tamper with ShieldChild in Settings.",
+                            text = str(R.string.instantly_deflects_attempts_to_force),
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.Medium,
                             color = colInkMuted
@@ -1113,7 +1109,7 @@ private fun Step3Permissions(
                             ) {
                                 Icon(Icons.Default.Check, contentDescription = null, tint = colPrimary, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Active", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colOnPrimaryContainer)
+                                Text(str(R.string.active), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colOnPrimaryContainer)
                             }
                         }
                     } else {
@@ -1122,11 +1118,11 @@ private fun Step3Permissions(
                             shape = RoundedCornerShape(20.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = colPrimary,
-                                contentColor = Color.White
+                                contentColor = Shield.colors.onPrimary
                             ),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                         ) {
-                            Text("Grant", fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                            Text(str(R.string.grant), fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1137,7 +1133,7 @@ private fun Step3Permissions(
         item {
             Surface(
                 shape = RoundedCornerShape(22.dp),
-                color = Color.White,
+                color = Shield.colors.card,
                 border = BorderStroke(1.dp, colLineSubtle),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -1149,10 +1145,10 @@ private fun Step3Permissions(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                        Text("Usage Access", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colInk)
+                        Text(str(R.string.usage_access), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colInk)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Tracks time spent in apps like YouTube and TikTok accurately.",
+                            text = str(R.string.tracks_time_spent_in_apps),
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.Medium,
                             color = colInkMuted
@@ -1170,7 +1166,7 @@ private fun Step3Permissions(
                             ) {
                                 Icon(Icons.Default.Check, contentDescription = null, tint = colPrimary, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Granted", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colOnPrimaryContainer)
+                                Text(str(R.string.granted), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colOnPrimaryContainer)
                             }
                         }
                     } else {
@@ -1179,11 +1175,11 @@ private fun Step3Permissions(
                             shape = RoundedCornerShape(20.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = colPrimary,
-                                contentColor = Color.White
+                                contentColor = Shield.colors.onPrimary
                             ),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                         ) {
-                            Text("Grant", fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                            Text(str(R.string.grant), fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1194,7 +1190,7 @@ private fun Step3Permissions(
         item {
             Surface(
                 shape = RoundedCornerShape(22.dp),
-                color = Color.White,
+                color = Shield.colors.card,
                 border = BorderStroke(1.dp, colLineSubtle),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -1206,10 +1202,10 @@ private fun Step3Permissions(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                        Text("Display Over Apps", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colInk)
+                        Text(str(R.string.display_over_apps), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colInk)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Enables bedtime curfew and instant downtime lock screen overlays.",
+                            text = str(R.string.enables_bedtime_curfew_and_instant),
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.Medium,
                             color = colInkMuted
@@ -1227,7 +1223,7 @@ private fun Step3Permissions(
                             ) {
                                 Icon(Icons.Default.Check, contentDescription = null, tint = colPrimary, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Granted", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colOnPrimaryContainer)
+                                Text(str(R.string.granted), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colOnPrimaryContainer)
                             }
                         }
                     } else {
@@ -1236,11 +1232,11 @@ private fun Step3Permissions(
                             shape = RoundedCornerShape(20.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = colPrimary,
-                                contentColor = Color.White
+                                contentColor = Shield.colors.onPrimary
                             ),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                         ) {
-                            Text("Grant", fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                            Text(str(R.string.grant), fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1252,7 +1248,7 @@ private fun Step3Permissions(
             item {
                 Surface(
                     shape = RoundedCornerShape(22.dp),
-                    color = Color.White,
+                    color = Shield.colors.card,
                     border = BorderStroke(1.dp, colLineSubtle),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -1264,10 +1260,10 @@ private fun Step3Permissions(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                            Text("Lockdown Notifications", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colInk)
+                            Text(str(R.string.lockdown_notifications), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colInk)
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "Required to immediately launch curfew lock screens on modern Android.",
+                                text = str(R.string.required_to_immediately_launch_curfew),
                                 fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = colInkMuted
@@ -1285,7 +1281,7 @@ private fun Step3Permissions(
                                 ) {
                                     Icon(Icons.Default.Check, contentDescription = null, tint = colPrimary, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Granted", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colOnPrimaryContainer)
+                                    Text(str(R.string.granted), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colOnPrimaryContainer)
                                 }
                             }
                         } else {
@@ -1294,11 +1290,11 @@ private fun Step3Permissions(
                                 shape = RoundedCornerShape(20.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = colPrimary,
-                                    contentColor = Color.White
+                                    contentColor = Shield.colors.onPrimary
                                 ),
                                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                             ) {
-                                Text("Grant", fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                                Text(str(R.string.grant), fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

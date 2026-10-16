@@ -24,7 +24,7 @@
         <h2>What stays on the device</h2>
         <ul>
           <li><b>Screen time & app usage:</b> Monitored strictly in real time using Android's native <code>UsageStatsManager</code>. Daily usage totals and app quotas are computed on-device and reset at midnight.</li>
-          <li><b>Parent authentication credentials:</b> Your Master PIN and Offline Recovery Key are never stored in plaintext. They are cryptographically hashed using salted SHA-256 and stored in private app storage. Biometric authentication (fingerprint) is handled directly by Android's secure hardware enclave (BiometricPrompt API).</li>
+          <li><b>Parent authentication credentials:</b> Your Master PIN and Offline Recovery Key are never stored in plaintext. They are stored only as salted PBKDF2 hashes in private app storage. The remote-unlock code secret (if you turn it on) is encrypted with a key held in Android's Keystore. Biometric authentication (fingerprint) is handled directly by Android's secure hardware enclave (BiometricPrompt API).</li>
           <li><b>Curfew and app limit policies:</b> Daily time limits, bedtime schedules, individual app caps, and emergency contact numbers remain strictly in your device's local encrypted preferences.</li>
           <li><b>Audit and unlock logs:</b> Unlock events, +15m bonus grants, and curfew override timestamps remain on the phone for parental review.</li>
         </ul>
@@ -32,6 +32,7 @@
 
         <h2>Network and data transmission</h2>
         <p>ShieldChild performs <b>zero background network uploads</b>. The app does not maintain any backend API, database, or analytics endpoint. It never transmits child device activity, app names, usage habits, or passwords over the internet.</p>
+        <p>The only time ShieldChild goes online is when a parent taps <b>Settings → Check for updates</b>. It then asks GitHub for the latest release and, if the parent chooses, downloads the new app file from GitHub. GitHub sees an ordinary web request (like any website visit); nothing about your child or their usage is sent. Remote unlock codes work entirely offline.</p>
 
         <h2>Android permissions explained</h2>
         <ul>
@@ -39,6 +40,7 @@
           <li><b>Accessibility Service:</b> Required for sub-10ms anti-bypass enforcement, ensuring bedtime lockdown screens cannot be skipped via navigation gestures, and blocking unauthorized attempts to force stop or clear data in Android Settings.</li>
           <li><b>Device Administrator (DevicePolicyManager):</b> Prevents unauthorized deletion of the app by children during daytime usage. Can be cleanly deactivated by the parent at any time inside the app's Security tab using their Master PIN or fingerprint.</li>
           <li><b>System Overlay (SYSTEM_ALERT_WINDOW):</b> Used to render polite, non-intrusive warnings and the full-screen Curfew Lock screen when downtime is in effect.</li>
+          <li><b>Internet & install apps (INTERNET, REQUEST_INSTALL_PACKAGES):</b> Used only when a parent taps "Check for updates" to download a newer ShieldChild from GitHub and hand it to Android's installer, where the parent confirms. Updates signed by anyone else are refused.</li>
           <li><b>Phone & SMS:</b> Used strictly for child safety: opening the native phone dialer for parent-configured Emergency SOS calls (e.g. 911 or parents) and dispatching "+15m bonus extension" request SMS messages through the phone's native messenger.</li>
         </ul>
 

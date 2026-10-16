@@ -1,5 +1,6 @@
 package com.shieldchild.app.engine
 
+import com.shieldchild.app.data.AccessState
 import com.shieldchild.app.data.AppLimit
 import com.shieldchild.app.data.DeviceCurfewPolicy
 import com.shieldchild.app.data.LockReason
@@ -17,38 +18,23 @@ class PolicyEngine {
         usageSummary: DailyUsageSummary,
         foregroundPackage: String?,
         calendar: Calendar = Calendar.getInstance(),
-        isCurfewOverrideActive: Boolean = false
+        access: AccessState = AccessState()
     ): LockState {
-        // Priority 1: Instant Parent Lockout (takes absolute priority)
-        if (policy.isInstantLocked) {
+        // A parent session lifts whole-phone locks only (via evaluateDeviceLock below);
+        // blocked and used-up apps stay locked in case the phone is handed back unlocked.
+
+        val deviceLockReason = evaluateDeviceLock(
+            policy = policy,
+            isDailyLimitReached = isDailyLimitReached(policy, usageSummary.totalDeviceUsageMinutes),
+            cal = calendar,
+            access = access
+        )
+        if (deviceLockReason != null) {
             return LockState.CurfewLock(
-                reason = LockReason.PARENT_INSTANT_FREEZE,
+                reason = deviceLockReason,
                 effectiveLimitMinutes = policy.effectiveDailyLimitMinutes,
                 usedMinutes = usageSummary.totalDeviceUsageMinutes
             )
-        }
-
-        // If parent granted temporary override (e.g. +15m bonus), bypass curfew and daily limits
-        if (!isCurfewOverrideActive) {
-            // Priority 2: Bedtime Curfew Schedule
-            if (policy.isCurfewScheduled && isWithinCurfewWindow(policy, calendar)) {
-                return LockState.CurfewLock(
-                    reason = LockReason.SCHEDULED_BEDTIME_CURFEW,
-                    effectiveLimitMinutes = policy.effectiveDailyLimitMinutes,
-                    usedMinutes = usageSummary.totalDeviceUsageMinutes
-                )
-            }
-
-            // Priority 3: Total Screen Time Daily Limit Exceeded
-            if (policy.effectiveDailyLimitMinutes > 0 &&
-                usageSummary.totalDeviceUsageMinutes >= policy.effectiveDailyLimitMinutes
-            ) {
-                return LockState.CurfewLock(
-                    reason = LockReason.TOTAL_SCREEN_TIME_EXCEEDED,
-                    effectiveLimitMinutes = policy.effectiveDailyLimitMinutes,
-                    usedMinutes = usageSummary.totalDeviceUsageMinutes
-                )
-            }
         }
 
         // Priority 4: Individual App Limit Exceeded
@@ -69,6 +55,34 @@ class PolicyEngine {
         return LockState.Unlocked
     }
 
+    /**
+     * Single source of truth for whole-phone locks, used by the monitor service, the
+     * accessibility service, boot/app start and the parent dashboard.
+     * A parent session lifts everything. Otherwise: instant lock > bedtime > daily limit,
+     * where a parent grant pauses only the lock it was given for.
+     */
+    fun evaluateDeviceLock(
+        policy: DeviceCurfewPolicy,
+        isDailyLimitReached: Boolean,
+        cal: Calendar = Calendar.getInstance(),
+        access: AccessState = AccessState()
+    ): LockReason? {
+        if (access.isParentSession) return null
+        if (policy.isInstantLocked) return LockReason.PARENT_INSTANT_FREEZE
+        if (!access.isBedtimePaused && policy.isCurfewScheduled && isWithinCurfewWindow(policy, cal)) {
+            return LockReason.SCHEDULED_BEDTIME_CURFEW
+        }
+        if (!access.isLimitPaused && isDailyLimitReached && !policy.isWholeDayAllowed(dayName(cal))) {
+            return LockReason.TOTAL_SCREEN_TIME_EXCEEDED
+        }
+        return null
+    }
+
+    fun isDailyLimitReached(policy: DeviceCurfewPolicy, usedMinutes: Long): Boolean =
+        policy.effectiveDailyLimitMinutes in 1..usedMinutes
+
+    fun dayName(cal: Calendar): String = DAY_NAMES[cal.get(Calendar.DAY_OF_WEEK) - 1]
+
     fun isWithinCurfewWindow(policy: DeviceCurfewPolicy, cal: Calendar = Calendar.getInstance()): Boolean {
         val currentMinutes = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
         val startMinutes = policy.curfewStartHour * 60 + policy.curfewStartMinute
@@ -81,5 +95,10 @@ class PolicyEngine {
             // Overnight window, e.g. 21:00 to 07:00
             currentMinutes >= startMinutes || currentMinutes < endMinutes
         }
+    }
+
+    companion object {
+        // Matches the keys stored in DeviceCurfewPolicy.unlimitedDays.
+        private val DAY_NAMES = arrayOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
     }
 }

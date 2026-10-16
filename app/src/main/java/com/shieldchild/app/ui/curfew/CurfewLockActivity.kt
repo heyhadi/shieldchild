@@ -1,5 +1,7 @@
 package com.shieldchild.app.ui.curfew
 
+import com.shieldchild.app.i18n.str
+import com.shieldchild.app.R
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
@@ -34,12 +36,23 @@ import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.fragment.app.FragmentActivity
 import com.shieldchild.app.ShieldApplication
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Key
+import com.shieldchild.app.ui.components.DialogError
+import com.shieldchild.app.ui.components.PinField
+import com.shieldchild.app.ui.components.DialogOption
+import com.shieldchild.app.ui.components.ShieldDialog
+import com.shieldchild.app.data.GrantMethod
 import com.shieldchild.app.data.LockReason
+import com.shieldchild.app.engine.AccessGrants
+import com.shieldchild.app.engine.RedeemResult
+import com.shieldchild.app.engine.RemoteCodeManager
 import com.shieldchild.app.engine.AuthResult
 import com.shieldchild.app.engine.BiometricAuthHelper
 import com.shieldchild.app.engine.ParentAuthManager
 import com.shieldchild.app.ui.theme.*
 import java.text.SimpleDateFormat
+import kotlinx.coroutines.delay
 import java.util.Date
 import java.util.Locale
 
@@ -57,60 +70,117 @@ class CurfewLockActivity : FragmentActivity() {
         tryEnterLockTaskMode()
 
         val lockReasonStr = intent.getStringExtra(EXTRA_LOCK_REASON) ?: LockReason.TOTAL_SCREEN_TIME_EXCEEDED.name
-        val lockReason = try {
+        lockReason = try {
             LockReason.valueOf(lockReasonStr)
         } catch (_: Exception) {
             LockReason.TOTAL_SCREEN_TIME_EXCEEDED
         }
 
         setContent {
+            // Re-check the rules while shown: close once nothing should be locked (e.g. a
+            // relaunch that raced with a parent's choice) and keep the reason up to date.
+            LaunchedEffect(Unit) {
+                while (true) {
+                    delay(2_000)
+                    val repo = ShieldApplication.instance.preferencesRepository
+                    val current = com.shieldchild.app.engine.CurfewLockLauncher.evaluateRebootLockReason(
+                        policy = repo.getCurfewPolicy(),
+                        isDailyExceeded = repo.isDailyLimitExceededToday(),
+                        access = repo.getAccessState()
+                    )
+                    if (current == null && authMethod == null) {
+                        closeLock()
+                        break
+                    }
+                    if (current != null) lockReason = current
+                }
+            }
             ShieldChildTheme(darkTheme = true) {
                 CurfewLockScreen(
                     reason = lockReason,
                     onEmergencyCall = { launchEmergencyDialer() },
-                    onFingerprintAuth = { triggerBiometricUnlock(30) },
-                    onFingerprintExtension = { triggerBiometricUnlock(15) },
+                    onFingerprintAuth = { triggerBiometricUnlock() },
                     onSendExtensionSms = { launchExtensionSms() },
-                    onUnlockSuccess = {
-                        isUnlocked = true
-                        val repo = ShieldApplication.instance.preferencesRepository
-                        repo.setInstantLock(false)
-                        repo.setDailyLimitExceededToday(false)
-                        com.shieldchild.app.engine.CurfewLockLauncher.dismissLockNotification(this@CurfewLockActivity)
-                        tryStopLockTaskMode()
-                        finish()
-                    },
+                    onParentAuthenticated = { method -> authMethod = method },
                     isFingerprintAvailable = biometricHelper.isBiometricReady(),
-                    authManager = authManager
+                    authManager = authManager,
+                    isRemoteCodeSetUp = remoteCodes.isSetUp(),
+                    onRedeemCode = { code -> redeemRemoteCode(code, lockReason) }
                 )
+                authMethod?.let { method ->
+                    ParentChoiceDialog(
+                        reason = lockReason,
+                        onChoice = { choice -> applyParentChoice(choice, lockReason, method) },
+                        onDismiss = { authMethod = null }
+                    )
+                }
             }
         }
     }
 
-    private fun triggerBiometricUnlock(bonusMinutes: Long = 30) {
+    private val remoteCodes by lazy {
+        RemoteCodeManager(ShieldApplication.instance.preferencesRepository, authManager)
+    }
+
+    /** Returns an error message for the child, or null when the code unlocked the phone. */
+    private fun redeemRemoteCode(code: String, reason: LockReason): String? {
+        return when (val result = remoteCodes.redeem(code)) {
+            is RedeemResult.Success -> {
+                AccessGrants.grantMinutes(this, ShieldApplication.instance.preferencesRepository, result.minutes, reason, GrantMethod.REMOTE_CODE)
+                Toast.makeText(this, str(R.string.unlocked_by_parent_code_for, result.minutes), Toast.LENGTH_LONG).show()
+                closeLock()
+                null
+            }
+            is RedeemResult.Invalid -> str(R.string.code_not_accepted_tries_left, result.remainingAttempts)
+            is RedeemResult.LockedOut -> str(R.string.too_many_wrong_codes_try, result.remainingSeconds / 60 + 1)
+            RedeemResult.DailyCapReached -> str(R.string.today_s_code_unlocks_are)
+            RedeemResult.NotSetUp -> str(R.string.remote_codes_aren_t_set)
+        }
+    }
+
+    private var lockReason by mutableStateOf(LockReason.TOTAL_SCREEN_TIME_EXCEEDED)
+
+    private fun closeLock() {
+        isUnlocked = true
+        com.shieldchild.app.engine.CurfewLockLauncher.dismissLockNotification(this)
+        tryStopLockTaskMode()
+        finish()
+    }
+
+    /** Set once a parent has signed in on this screen; shows the choice dialog. */
+    private var authMethod by mutableStateOf<GrantMethod?>(null)
+
+    private fun triggerBiometricUnlock() {
         biometricHelper.promptBiometricAuth(
-            title = if (bonusMinutes == 15L) "Approve +15 Mins" else "Parent Fingerprint Unlock",
-            subtitle = "Scan your fingerprint to grant $bonusMinutes mins bonus time",
-            negativeButtonText = "Use Master PIN",
-            onSuccess = {
-                isUnlocked = true
-                val repo = ShieldApplication.instance.preferencesRepository
-                repo.setInstantLock(false)
-                repo.setDailyLimitExceededToday(false)
-                repo.addBonusMinutes(bonusMinutes)
-                repo.grantTemporaryCurfewOverride(bonusMinutes)
-                com.shieldchild.app.engine.CurfewLockLauncher.dismissLockNotification(this@CurfewLockActivity)
-                Toast.makeText(this, "Parent Approved! +$bonusMinutes mins added.", Toast.LENGTH_SHORT).show()
-                tryStopLockTaskMode()
-                finish()
-            },
+            title = str(R.string.parent_fingerprint),
+            subtitle = str(R.string.scan_the_parent_s_fingerprint),
+            negativeButtonText = str(R.string.cancel),
+            onSuccess = { authMethod = GrantMethod.FINGERPRINT },
             onError = { _, errString ->
                 Toast.makeText(this, errString, Toast.LENGTH_SHORT).show()
             },
             onFailed = {
-                Toast.makeText(this, "Fingerprint not recognized.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, str(R.string.fingerprint_not_recognized), Toast.LENGTH_SHORT).show()
             }
         )
+    }
+
+    private fun applyParentChoice(choice: ParentChoice, reason: LockReason, method: GrantMethod) {
+        val repo = ShieldApplication.instance.preferencesRepository
+        when (choice) {
+            ParentChoice.ParentAccess -> {
+                AccessGrants.startParentSession(this, repo, method)
+                Toast.makeText(this, str(R.string.parent_access_locks_again_when), Toast.LENGTH_LONG).show()
+            }
+            is ParentChoice.ExtraMinutes -> {
+                AccessGrants.grantMinutes(this, repo, choice.minutes, reason, method)
+                Toast.makeText(this, str(R.string.min_given, choice.minutes), Toast.LENGTH_SHORT).show()
+            }
+            ParentChoice.RestOfToday -> AccessGrants.grantRestOfToday(this, repo, reason, method)
+            ParentChoice.InstantLockOff -> AccessGrants.turnOffInstantLock(this, repo, method)
+        }
+        authMethod = null
+        closeLock()
     }
 
     private fun setupLockWindowFlags() {
@@ -119,6 +189,7 @@ class CurfewLockActivity : FragmentActivity() {
             setTurnScreenOn(true)
         }
         window.addFlags(
+            WindowManager.LayoutParams.FLAG_SECURE or
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
                     WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
                     WindowManager.LayoutParams.FLAG_FULLSCREEN
@@ -145,6 +216,7 @@ class CurfewLockActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
+        com.shieldchild.app.ui.dashboard.ParentDashboardActivity.isParentAuthenticatedState.value = false
         isLaunchingEmergency = false
     }
 
@@ -208,7 +280,7 @@ class CurfewLockActivity : FragmentActivity() {
         val repo = ShieldApplication.instance.preferencesRepository
         val policy = repo.getCurfewPolicy()
         val childName = repo.getChildName().ifEmpty { "Leo" }
-        val message = "Hi Mom/Dad, my screen time is locked. Can I please have 15 more minutes? - $childName"
+        val message = str(R.string.my_phone_is_locked_can, childName)
         try {
             val intent = Intent(Intent.ACTION_SENDTO).apply {
                 data = Uri.parse("smsto:${policy.emergencyPhoneNumber}")
@@ -217,7 +289,7 @@ class CurfewLockActivity : FragmentActivity() {
             }
             startActivity(intent)
         } catch (_: Exception) {
-            Toast.makeText(this, "Unable to open SMS messaging app.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, str(R.string.unable_to_open_sms_messaging), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -231,40 +303,41 @@ fun CurfewLockScreen(
     reason: LockReason,
     onEmergencyCall: () -> Unit,
     onFingerprintAuth: () -> Unit,
-    onFingerprintExtension: () -> Unit,
     onSendExtensionSms: () -> Unit,
-    onUnlockSuccess: () -> Unit,
+    onParentAuthenticated: (GrantMethod) -> Unit,
     isFingerprintAvailable: Boolean,
-    authManager: ParentAuthManager
+    authManager: ParentAuthManager,
+    isRemoteCodeSetUp: Boolean,
+    onRedeemCode: (String) -> String?
 ) {
     var showPinDialog by remember { mutableStateOf(false) }
+    var showCodeDialog by remember { mutableStateOf(false) }
     var showExtensionDialog by remember { mutableStateOf(false) }
-    var pinBonusMinutes by remember { mutableStateOf(30L) }
 
     val currentTimeStr = remember {
         SimpleDateFormat("hh:mm", Locale.getDefault()).format(Date())
     }
 
     val headlineText = when (reason) {
-        LockReason.TOTAL_SCREEN_TIME_EXCEEDED -> "Downtime Active"
-        LockReason.SCHEDULED_BEDTIME_CURFEW -> "Bedtime Curfew"
-        LockReason.PARENT_INSTANT_FREEZE -> "Device Paused"
+        LockReason.TOTAL_SCREEN_TIME_EXCEEDED -> str(R.string.downtime_active)
+        LockReason.SCHEDULED_BEDTIME_CURFEW -> str(R.string.bedtime_curfew)
+        LockReason.PARENT_INSTANT_FREEZE -> str(R.string.device_paused)
     }
 
     val subtitleText = when (reason) {
-        LockReason.TOTAL_SCREEN_TIME_EXCEEDED -> "Time to unplug • Daily screen time limit reached"
-        LockReason.SCHEDULED_BEDTIME_CURFEW -> "Bedtime hours active • Sleep well & recharge"
-        LockReason.PARENT_INSTANT_FREEZE -> "Focus mode • Paused by parent"
+        LockReason.TOTAL_SCREEN_TIME_EXCEEDED -> str(R.string.time_to_unplug_daily_screen)
+        LockReason.SCHEDULED_BEDTIME_CURFEW -> str(R.string.bedtime_hours_active_sleep_well)
+        LockReason.PARENT_INSTANT_FREEZE -> str(R.string.focus_mode_paused_by_parent)
     }
 
     // Material You M3 Dark Palette (Slate / Lavender Monet tones)
-    val canvasBg = Color(0xFF141218)
-    val squircleCardBg = Color(0xFF2B2930)
-    val tertiaryPill = Color(0xFFEADBFF)
-    val onTertiaryPill = Color(0xFF241432)
-    val tonalSurfacePill = Color(0xFF332D41)
-    val textPrimary = Color(0xFFE6E0E9)
-    val textSecondary = Color(0xFFCAC4D0)
+    val canvasBg = Shield.colors.canvas
+    val squircleCardBg = Shield.colors.card
+    val tertiaryPill = Shield.colors.primaryContainer
+    val onTertiaryPill = Shield.colors.onPrimaryContainer
+    val tonalSurfacePill = Shield.colors.surfaceVariant
+    val textPrimary = Shield.colors.ink
+    val textSecondary = Shield.colors.inkMuted
 
     Box(
         modifier = Modifier
@@ -291,7 +364,7 @@ fun CurfewLockScreen(
                     letterSpacing = (-1).sp
                 )
                 Text(
-                    text = "Downtime Lock",
+                    text = str(R.string.downtime_lock),
                     fontSize = 14.sp,
                     color = textSecondary,
                     fontWeight = FontWeight.Medium
@@ -315,13 +388,13 @@ fun CurfewLockScreen(
                         modifier = Modifier
                             .size(68.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF492532)),
+                            .background(Shield.colors.primaryContainer),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Bedtime,
-                            contentDescription = "Downtime",
-                            tint = Color(0xFFFFD8E4),
+                            contentDescription = str(R.string.downtime),
+                            tint = Shield.colors.onPrimaryContainer,
                             modifier = Modifier.size(36.dp)
                         )
                     }
@@ -368,7 +441,7 @@ fun CurfewLockScreen(
                     shape = RoundedCornerShape(28.dp)
                 ) {
                     Text(
-                        text = "Ask for 15 More Mins",
+                        text = str(R.string.ask_for_more_time),
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,
                         color = onTertiaryPill
@@ -392,13 +465,13 @@ fun CurfewLockScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Fingerprint,
-                            contentDescription = "Fingerprint",
-                            tint = Color(0xFFD0BCFF),
+                            contentDescription = str(R.string.fingerprint),
+                            tint = Shield.colors.primary,
                             modifier = Modifier.size(24.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "Scan Parent Fingerprint",
+                            text = str(R.string.scan_parent_fingerprint),
                             color = textPrimary,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 15.sp
@@ -410,23 +483,36 @@ fun CurfewLockScreen(
 
                 // Button 3: Outlined Master PIN Pill
                 OutlinedButton(
-                    onClick = {
-                        pinBonusMinutes = 30L
-                        showPinDialog = true
-                    },
+                    onClick = { showPinDialog = true },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(50.dp),
                     shape = RoundedCornerShape(25.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF49454E))
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Shield.colors.line)
                 ) {
                     Icon(Icons.Default.Lock, contentDescription = null, tint = textSecondary)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Parent Passcode",
+                        text = str(R.string.parent_passcode),
                         color = textPrimary,
                         fontSize = 14.sp
                     )
+                }
+
+                if (isRemoteCodeSetUp) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    if (reason == LockReason.PARENT_INSTANT_FREEZE) {
+                        Text(
+                            str(R.string.locked_by_your_parent_a),
+                            fontSize = 13.sp,
+                            color = textSecondary,
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        TextButton(onClick = { showCodeDialog = true }, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text(str(R.string.i_have_a_code_from), color = Shield.colors.primary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -434,20 +520,20 @@ fun CurfewLockScreen(
                 // Button 4: Emergency Calls
                 TextButton(
                     onClick = onEmergencyCall,
-                    colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFFFB4AB))
+                    colors = ButtonDefaults.textButtonColors(contentColor = Shield.colors.error)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Phone,
-                        contentDescription = "Emergency",
-                        tint = Color(0xFFFFB4AB),
+                        contentDescription = str(R.string.emergency),
+                        tint = Shield.colors.error,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Emergency Calls",
+                        text = str(R.string.emergency_calls_2),
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp,
-                        color = Color(0xFFFFB4AB)
+                        color = Shield.colors.error
                     )
                 }
             }
@@ -462,11 +548,10 @@ fun CurfewLockScreen(
                 isFingerprintAvailable = isFingerprintAvailable,
                 onFingerprintGrant = {
                     showExtensionDialog = false
-                    onFingerprintExtension()
+                    onFingerprintAuth()
                 },
                 onPinGrant = {
                     showExtensionDialog = false
-                    pinBonusMinutes = 15L
                     showPinDialog = true
                 },
                 onSendSms = {
@@ -477,14 +562,17 @@ fun CurfewLockScreen(
             )
         }
 
+        if (showCodeDialog) {
+            RemoteCodeDialog(onRedeem = onRedeemCode, onDismiss = { showCodeDialog = false })
+        }
+
         if (showPinDialog) {
             ParentPinDialog(
                 authManager = authManager,
-                bonusMinutes = pinBonusMinutes,
                 onDismiss = { showPinDialog = false },
-                onUnlockSuccess = {
+                onAuthenticated = { method ->
                     showPinDialog = false
-                    onUnlockSuccess()
+                    onParentAuthenticated(method)
                 }
             )
         }
@@ -494,9 +582,8 @@ fun CurfewLockScreen(
 @Composable
 fun ParentPinDialog(
     authManager: ParentAuthManager,
-    bonusMinutes: Long = 30,
     onDismiss: () -> Unit,
-    onUnlockSuccess: () -> Unit
+    onAuthenticated: (GrantMethod) -> Unit
 ) {
     var enteredPin by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -508,92 +595,34 @@ fun ParentPinDialog(
             onDismiss = { showRecoveryDialog = false },
             onRecoverySuccess = {
                 showRecoveryDialog = false
-                val repo = ShieldApplication.instance.preferencesRepository
-                repo.setInstantLock(false)
-                repo.addBonusMinutes(bonusMinutes)
-                repo.grantTemporaryCurfewOverride(bonusMinutes)
-                Toast.makeText(ShieldApplication.instance, "PIN reset successfully! Unlocked.", Toast.LENGTH_SHORT).show()
-                onUnlockSuccess()
+                Toast.makeText(ShieldApplication.instance, str(R.string.pin_reset), Toast.LENGTH_SHORT).show()
+                onAuthenticated(GrantMethod.RECOVERY_KEY)
             }
         )
         return
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(text = "Parent Master PIN", fontWeight = FontWeight.Bold)
-        },
-        text = {
-            Column {
-                Text(
-                    text = "Enter your parent security PIN to grant +$bonusMinutes minutes and unlock.",
-                    fontSize = 14.sp,
-                    color = Color(0xFF94A3B8)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                OutlinedTextField(
-                    value = enteredPin,
-                    onValueChange = { if (it.length <= 8) enteredPin = it },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true,
-                    label = { Text("PIN") },
-                    isError = errorMessage != null,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                if (errorMessage != null) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = errorMessage!!,
-                        color = MaterialTheme.colorScheme.error,
-                        fontSize = 12.sp
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                TextButton(
-                    onClick = { showRecoveryDialog = true },
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Text(
-                        text = "Forgot PIN? Use Recovery Key",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    when (val result = authManager.verifyPin(enteredPin)) {
-                        is AuthResult.Success -> {
-                            val repo = ShieldApplication.instance.preferencesRepository
-                            repo.setInstantLock(false)
-                            repo.addBonusMinutes(bonusMinutes)
-                            repo.grantTemporaryCurfewOverride(bonusMinutes)
-                            onUnlockSuccess()
-                        }
-                        is AuthResult.InvalidPin -> {
-                            errorMessage = "Incorrect PIN. ${result.remainingAttempts} attempts remaining."
-                        }
-                        is AuthResult.LockedOut -> {
-                            errorMessage = "Too many attempts. Locked for ${result.remainingSeconds}s."
-                        }
-                    }
-                }
-            ) {
-                Text("Unlock")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
+    ShieldDialog(
+        icon = Icons.Default.Lock,
+        title = str(R.string.parent_pin),
+        message = str(R.string.enter_the_parent_pin_you),
+        onDismiss = onDismiss,
+        confirmText = str(R.string.action_continue),
+        confirmEnabled = enteredPin.length >= 4,
+        onConfirm = {
+            when (val result = authManager.verifyPin(enteredPin)) {
+                is AuthResult.Success -> onAuthenticated(GrantMethod.PIN)
+                is AuthResult.InvalidPin -> errorMessage = str(R.string.incorrect_pin_attempts_remaining, result.remainingAttempts)
+                is AuthResult.LockedOut -> errorMessage = str(R.string.too_many_attempts_try_again, result.remainingSeconds / 60 + 1)
             }
         }
-    )
+    ) {
+        PinField(value = enteredPin, onValueChange = { enteredPin = it; errorMessage = null }, label = str(R.string.method_pin), isError = errorMessage != null)
+        DialogError(errorMessage)
+        TextButton(onClick = { showRecoveryDialog = true }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+            Text(str(R.string.forgot_pin_use_recovery_key_2), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Shield.colors.primary)
+        }
+    }
 }
 
 @Composable
@@ -606,75 +635,18 @@ fun ExtensionRequestDialog(
     onSendSms: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(text = "Ask for +15 Minutes", fontWeight = FontWeight.Bold, color = Color(0xFFE6E0E9))
-        },
-        text = {
-            Column {
-                Text(
-                    text = "A parent can approve +15 minutes in person with fingerprint or PIN, or you can send a text request.",
-                    fontSize = 14.sp,
-                    color = Color(0xFFCAC4D0),
-                    lineHeight = 19.sp
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                if (isFingerprintAvailable) {
-                    Button(
-                        onClick = onFingerprintGrant,
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        shape = RoundedCornerShape(24.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFD0BCFF),
-                            contentColor = Color(0xFF381E72)
-                        )
-                    ) {
-                        Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Parent Fingerprint (+15m)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    }
-                    Spacer(modifier = Modifier.height(10.dp))
-                }
-
-                Button(
-                    onClick = onPinGrant,
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF4A4458),
-                        contentColor = Color(0xFFE8DEF8)
-                    )
-                ) {
-                    Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Parent Master PIN (+15m)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                OutlinedButton(
-                    onClick = onSendSms,
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF938F99))
-                ) {
-                    Icon(Icons.Default.Phone, contentDescription = null, tint = Color(0xFFD0BCFF), modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Text Parent ($emergencyPhone)", color = Color(0xFFE6E0E9), fontSize = 14.sp)
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Color(0xFFCAC4D0))
-            }
-        },
-        containerColor = Color(0xFF2B2930)
-    )
+    ShieldDialog(
+        icon = Icons.Default.Schedule,
+        title = str(R.string.ask_for_more_time),
+        message = str(R.string.if_your_parent_is_here),
+        onDismiss = onDismiss
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (isFingerprintAvailable) DialogOption(str(R.string.parent_here_fingerprint), onFingerprintGrant, primary = true)
+            DialogOption(str(R.string.parent_here_pin), onPinGrant, primary = !isFingerprintAvailable)
+            DialogOption(str(R.string.text_parent, emergencyPhone), onSendSms)
+        }
+    }
 }
 
 @Composable
@@ -688,75 +660,106 @@ fun CurfewRecoveryKeyDialog(
     var confirmPinInput by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(text = "Emergency Recovery Key", fontWeight = FontWeight.Bold)
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "Enter your 16-character Master Recovery Key to reset your parent PIN offline.",
-                    fontSize = 13.5.sp,
-                    color = Color(0xFF6F7A73)
-                )
-                OutlinedTextField(
-                    value = recoveryKeyInput,
-                    onValueChange = { recoveryKeyInput = it.uppercase() },
-                    label = { Text("Recovery Key (e.g. SHLD-9A4F...)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = newPinInput,
-                    onValueChange = { if (it.length <= 8 && it.all { c -> c.isDigit() }) newPinInput = it },
-                    label = { Text("New 4-digit PIN") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = confirmPinInput,
-                    onValueChange = { if (it.length <= 8 && it.all { c -> c.isDigit() }) confirmPinInput = it },
-                    label = { Text("Confirm New PIN") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                if (errorMessage != null) {
-                    Text(
-                        text = errorMessage!!,
-                        color = MaterialTheme.colorScheme.error,
-                        fontSize = 12.5.sp
+    ShieldDialog(
+        icon = Icons.Default.Key,
+        title = str(R.string.reset_pin_with_recovery_key),
+        message = str(R.string.enter_the_16_character_recovery),
+        onDismiss = onDismiss,
+        confirmText = str(R.string.reset_pin),
+        onConfirm = {
+            errorMessage = when {
+                recoveryKeyInput.isBlank() -> str(R.string.please_enter_your_recovery_key)
+                newPinInput.length < 4 -> str(R.string.new_pin_must_be_at)
+                newPinInput != confirmPinInput -> str(R.string.pins_do_not_match)
+                authManager.recoverWithMasterKey(recoveryKeyInput, newPinInput) -> {
+                    onRecoverySuccess()
+                    null
+                }
+                else -> str(R.string.wrong_recovery_key_or_too)
+            }
+        }
+    ) {
+        OutlinedTextField(
+            value = recoveryKeyInput,
+            onValueChange = { recoveryKeyInput = it.uppercase(); errorMessage = null },
+            label = { Text(str(R.string.recovery_key_xxxx_xxxx_xxxx)) },
+            singleLine = true,
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        PinField(value = newPinInput, onValueChange = { newPinInput = it; errorMessage = null }, label = str(R.string.label_new_pin_4_8))
+        Spacer(modifier = Modifier.height(10.dp))
+        PinField(value = confirmPinInput, onValueChange = { confirmPinInput = it; errorMessage = null }, label = str(R.string.label_confirm_new_pin))
+        DialogError(errorMessage)
+    }
+}
+
+sealed class ParentChoice {
+    object ParentAccess : ParentChoice()
+    data class ExtraMinutes(val minutes: Long) : ParentChoice()
+    object RestOfToday : ParentChoice()
+    object InstantLockOff : ParentChoice()
+}
+
+/** Shown after a parent signs in on the lock screen. Signing in alone gives no time. */
+@Composable
+fun ParentChoiceDialog(
+    reason: LockReason,
+    onChoice: (ParentChoice) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ShieldDialog(
+        icon = Icons.Default.Shield,
+        title = str(R.string.what_do_you_want_to),
+        onDismiss = onDismiss
+    ) {
+        DialogOption(str(R.string.use_the_phone_myself), { onChoice(ParentChoice.ParentAccess) }, primary = true)
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            str(R.string.no_time_for_your_child),
+            fontSize = 12.5.sp, color = Shield.colors.inkMuted, lineHeight = 17.sp, textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        if (reason == LockReason.PARENT_INSTANT_FREEZE) {
+            DialogOption(str(R.string.turn_off_instant_lock), { onChoice(ParentChoice.InstantLockOff) })
+        } else {
+            Text(str(R.string.give_your_child_time), fontWeight = FontWeight.SemiBold, color = Shield.colors.ink, fontSize = 14.sp)
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                listOf(15L, 30L, 60L).forEach { minutes ->
+                    DialogOption(
+                        if (minutes == 60L) str(R.string.t_1_h) else str(R.string.min_2, minutes),
+                        { onChoice(ParentChoice.ExtraMinutes(minutes)) },
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    when {
-                        recoveryKeyInput.isBlank() -> errorMessage = "Please enter your recovery key"
-                        newPinInput.length < 4 -> errorMessage = "New PIN must be at least 4 digits"
-                        newPinInput != confirmPinInput -> errorMessage = "PINs do not match"
-                        else -> {
-                            val success = authManager.recoverWithMasterKey(recoveryKeyInput, newPinInput)
-                            if (success) {
-                                onRecoverySuccess()
-                            } else {
-                                errorMessage = "Invalid recovery key. Please check the code."
-                            }
-                        }
-                    }
-                }
-            ) {
-                Text("Reset & Unlock")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
+            Spacer(modifier = Modifier.height(8.dp))
+            DialogOption(
+                if (reason == LockReason.SCHEDULED_BEDTIME_CURFEW) str(R.string.no_bedtime_tonight) else str(R.string.no_limit_for_the_rest),
+                { onChoice(ParentChoice.RestOfToday) }
+            )
         }
-    )
+    }
+}
+
+/** Child types the 6-digit code a parent read out from their authenticator app. */
+@Composable
+fun RemoteCodeDialog(onRedeem: (String) -> String?, onDismiss: () -> Unit) {
+    var code by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    ShieldDialog(
+        icon = Icons.Default.Key,
+        title = str(R.string.code_from_your_parent),
+        message = str(R.string.call_your_parent_and_ask),
+        onDismiss = onDismiss,
+        confirmText = str(R.string.unlock),
+        confirmEnabled = code.length == 6,
+        onConfirm = { error = onRedeem(code) }
+    ) {
+        PinField(value = code, onValueChange = { code = it; error = null }, label = str(R.string.label_6_digit_code), maxLength = 6, hidden = false, isError = error != null)
+        DialogError(error)
+    }
 }

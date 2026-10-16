@@ -1,5 +1,6 @@
 package com.shieldchild.app.overlay
 
+import com.shieldchild.app.i18n.str
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
@@ -75,7 +76,7 @@ class AppShieldOverlayManager(private val context: Context) {
         usedMinutes: Long
     ): View {
         val root = android.widget.FrameLayout(context).apply {
-            setBackgroundColor(android.graphics.Color.parseColor("#F50F172A")) // 96% deep slate
+            setBackgroundColor(android.graphics.Color.parseColor("#F50F1411")) // DarkShieldColors.canvas at 96%, same as the lock screen
             isClickable = true
             isFocusable = true
         }
@@ -92,25 +93,29 @@ class AppShieldOverlayManager(private val context: Context) {
         }
 
         val titleView = TextView(context).apply {
-            text = "$appName is on Pause"
+            text = str(R.string.is_on_pause, appName)
             textSize = 24f
-            setTextColor(android.graphics.Color.WHITE)
+            setTextColor(android.graphics.Color.parseColor("#E3E8E3")) // ink
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             gravity = Gravity.CENTER
         }
 
         val subtitleView = TextView(context).apply {
-            text = "You've reached your $limitMinutes min daily limit on this app."
+            text = str(R.string.you_ve_reached_your_min, limitMinutes)
             textSize = 15f
-            setTextColor(android.graphics.Color.parseColor("#94A3B8"))
+            setTextColor(android.graphics.Color.parseColor("#B4BEB7")) // inkMuted
             gravity = Gravity.CENTER
             setPadding(0, 16, 0, 48)
         }
 
         val btnHome = Button(context).apply {
-            text = "Go to Home Screen"
-            setTextColor(android.graphics.Color.WHITE)
-            setBackgroundColor(android.graphics.Color.parseColor("#2D60FF"))
+            text = str(R.string.go_to_home_screen)
+            setTextColor(android.graphics.Color.parseColor("#00391F")) // onPrimary
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = 24f * context.resources.displayMetrics.density
+                setColor(android.graphics.Color.parseColor("#8FD3AE")) // primary
+            }
+            isAllCaps = false
             setOnClickListener {
                 dismiss()
                 val homeIntent = Intent(Intent.ACTION_MAIN).apply {
@@ -122,9 +127,10 @@ class AppShieldOverlayManager(private val context: Context) {
         }
 
         val btnParent = Button(context).apply {
-            text = "Parent Unlock / Add Time"
-            setTextColor(android.graphics.Color.parseColor("#94A3B8"))
+            text = str(R.string.parent_unlock_add_time)
+            setTextColor(android.graphics.Color.parseColor("#8FD3AE")) // primary
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            isAllCaps = false
             setOnClickListener {
                 val curfewIntent = Intent(context, CurfewLockActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP

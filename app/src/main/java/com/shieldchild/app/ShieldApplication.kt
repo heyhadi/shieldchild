@@ -1,5 +1,7 @@
 package com.shieldchild.app
 
+import com.shieldchild.app.i18n.str
+import com.shieldchild.app.R
 import android.app.Application
 import android.app.Notification
 import android.app.NotificationChannel
@@ -28,7 +30,7 @@ class ShieldApplication : Application() {
             val reason = CurfewLockLauncher.evaluateRebootLockReason(
                 policy = policy,
                 isDailyExceeded = isDailyExceeded,
-                isOverrideActive = preferencesRepository.isCurfewOverrideActive()
+                access = preferencesRepository.getAccessState()
             )
             if (reason != null) {
                 CurfewLockLauncher.launch(this, reason)
@@ -40,28 +42,28 @@ class ShieldApplication : Application() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_MONITOR,
-                "ShieldChild Protection Guard",
+                str(R.string.shieldchild_protection_guard),
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Monitors screen time boundaries and protects device settings."
+                description = str(R.string.monitors_screen_time_boundaries_and)
                 setShowBadge(false)
             }
 
             val alertChannel = NotificationChannel(
                 CHANNEL_ALERTS,
-                "ShieldChild Boundary Alerts",
+                str(R.string.shieldchild_boundary_alerts),
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Notifications for time warnings and parent approval requests."
+                description = str(R.string.notifications_for_time_warnings_and)
                 setShowBadge(true)
             }
 
             val lockChannel = NotificationChannel(
                 CHANNEL_LOCK,
-                "ShieldChild Curfew Lock",
+                str(R.string.shieldchild_curfew_lock),
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Immediate full-screen lockdown enforcement for curfew and limits."
+                description = str(R.string.immediate_full_screen_lockdown_enforcement)
                 setShowBadge(false)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
                 setBypassDnd(true)

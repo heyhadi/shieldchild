@@ -2,6 +2,8 @@ package com.shieldchild.app.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.SystemClock
+import android.provider.Settings
 import com.shieldchild.app.engine.ParentAuthManager
 import org.json.JSONArray
 import org.json.JSONObject
@@ -9,10 +11,20 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class PreferencesRepository(context: Context) {
+class PreferencesRepository(
+    context: Context,
+    /** Uptime clock; injectable so session timing can be unit-tested. */
+    private val elapsedRealtime: () -> Long = { SystemClock.elapsedRealtime() }
+) {
+
+    private val appContext: Context = context
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences("shield_child_secure_prefs", Context.MODE_PRIVATE)
+
+    init {
+        removeLegacySharedRecoveryKey()
+    }
 
     // --- Authentication & Security ---
     fun getPinHash(): String? = prefs.getString(KEY_PIN_HASH, null)
@@ -26,20 +38,22 @@ class PreferencesRepository(context: Context) {
     }
 
     fun getRecoveryKeyHash(): String? = prefs.getString(KEY_RECOVERY_KEY_HASH, null)
-    fun saveRecoveryKeyHash(hash: String) {
-        prefs.edit().putString(KEY_RECOVERY_KEY_HASH, hash).apply()
+    fun getRecoveryKeySalt(): String? = prefs.getString(KEY_RECOVERY_KEY_SALT, null)
+    fun saveRecoveryKeyHash(hash: String, salt: String) {
+        prefs.edit()
+            .putString(KEY_RECOVERY_KEY_HASH, hash)
+            .putString(KEY_RECOVERY_KEY_SALT, salt)
+            .apply()
     }
 
-    fun getMasterRecoveryKey(): String {
-        val existing = prefs.getString(KEY_RECOVERY_KEY_RAW, null)
-        if (existing != null) return existing
-        val defaultKey = DEFAULT_RECOVERY_KEY
-        prefs.edit().putString(KEY_RECOVERY_KEY_RAW, defaultKey).apply()
-        return defaultKey
-    }
-
-    fun saveMasterRecoveryKey(key: String) {
-        prefs.edit().putString(KEY_RECOVERY_KEY_RAW, key.trim().uppercase()).apply()
+    /**
+     * v1.0.0 shipped one hard-coded recovery key on every phone. Drop it (and its hash)
+     * so the parent is asked to create a private one.
+     */
+    private fun removeLegacySharedRecoveryKey() {
+        if (prefs.contains(KEY_RECOVERY_KEY_RAW) || (prefs.contains(KEY_RECOVERY_KEY_HASH) && !prefs.contains(KEY_RECOVERY_KEY_SALT))) {
+            prefs.edit().remove(KEY_RECOVERY_KEY_RAW).remove(KEY_RECOVERY_KEY_HASH).apply()
+        }
     }
 
     fun hasPinConfigured(): Boolean = getPinHash() != null
@@ -66,7 +80,7 @@ class PreferencesRepository(context: Context) {
         prefs.edit().putBoolean(KEY_SETUP_COMPLETED, completed).apply()
     }
 
-    fun isBiometricEnabled(): Boolean = prefs.getBoolean(KEY_BIOMETRIC_ENABLED, true)
+    fun isBiometricEnabled(): Boolean = prefs.getBoolean(KEY_BIOMETRIC_ENABLED, false)
     fun setBiometricEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_BIOMETRIC_ENABLED, enabled).apply()
     }
@@ -115,18 +129,169 @@ class PreferencesRepository(context: Context) {
         prefs.edit().putLong(KEY_BONUS_MINUTES, currentBonus + additionalMinutes).apply()
     }
 
-    fun grantTemporaryCurfewOverride(minutes: Long) {
-        val until = System.currentTimeMillis() + (minutes * 60 * 1000L)
-        prefs.edit().putLong(KEY_CURFEW_OVERRIDE_UNTIL, until).apply()
+    // --- Parent grants & parent session ---
+    fun getAccessState(): AccessState {
+        val now = System.currentTimeMillis()
+        return AccessState(
+            isBedtimePaused = now < prefs.getLong(KEY_BEDTIME_PAUSED_UNTIL, 0L),
+            isLimitPaused = now < prefs.getLong(KEY_LIMIT_PAUSED_UNTIL, 0L),
+            isParentSession = isParentSessionActive()
+        )
     }
 
-    fun isCurfewOverrideActive(): Boolean {
-        val until = prefs.getLong(KEY_CURFEW_OVERRIDE_UNTIL, 0L)
-        return System.currentTimeMillis() < until
+    fun getBedtimePausedUntil(): Long = prefs.getLong(KEY_BEDTIME_PAUSED_UNTIL, 0L)
+    fun getLimitPausedUntil(): Long = prefs.getLong(KEY_LIMIT_PAUSED_UNTIL, 0L)
+
+    fun pauseBedtimeUntil(timestamp: Long) {
+        prefs.edit().putLong(KEY_BEDTIME_PAUSED_UNTIL, timestamp).apply()
     }
 
-    fun clearCurfewOverride() {
-        prefs.edit().remove(KEY_CURFEW_OVERRIDE_UNTIL).apply()
+    fun pauseLimitUntil(timestamp: Long) {
+        prefs.edit().putLong(KEY_LIMIT_PAUSED_UNTIL, timestamp).apply()
+    }
+
+    /**
+     * Parent sessions are timed with elapsedRealtime plus the boot count, so changing the
+     * clock can't stretch one and a reboot always ends it.
+     */
+    fun startParentSession() {
+        val now = elapsedRealtime()
+        prefs.edit()
+            .putLong(KEY_PARENT_SESSION_START, now)
+            .putLong(KEY_PARENT_SESSION_TOUCH, now)
+            .putInt(KEY_PARENT_SESSION_BOOT, bootCount())
+            .commit()
+    }
+
+    fun hasParentSessionRecord(): Boolean = prefs.getLong(KEY_PARENT_SESSION_START, 0L) > 0L
+
+    fun isParentSessionActive(): Boolean {
+        val start = prefs.getLong(KEY_PARENT_SESSION_START, 0L)
+        if (start <= 0L || prefs.getInt(KEY_PARENT_SESSION_BOOT, -1) != bootCount()) return false
+        val now = elapsedRealtime()
+        if (now < start) return false
+        // Never cut off a parent's phone call.
+        // shortcut: a child who starts a call inside the session also keeps it open while the call lasts;
+        // restrict to the dialer being in front if that turns out to be abused.
+        if (isInCall()) return true
+        val lastTouch = prefs.getLong(KEY_PARENT_SESSION_TOUCH, start)
+        return now - start < PARENT_SESSION_MAX_MS && now - lastTouch < PARENT_SESSION_IDLE_MS
+    }
+
+    /** Called on user interaction; throttled so scrolling doesn't hammer storage. */
+    fun touchParentSession() {
+        if (!isParentSessionActive()) return
+        val now = elapsedRealtime()
+        if (now - prefs.getLong(KEY_PARENT_SESSION_TOUCH, 0L) > 15_000L) {
+            prefs.edit().putLong(KEY_PARENT_SESSION_TOUCH, now).apply()
+        }
+    }
+
+    /** Ends the session and keeps the parent's screen time out of the child's total. */
+    fun endParentSession() {
+        val start = prefs.getLong(KEY_PARENT_SESSION_START, 0L)
+        if (start <= 0L) return
+        val sameBoot = prefs.getInt(KEY_PARENT_SESSION_BOOT, -1) == bootCount()
+        val now = elapsedRealtime()
+        val usedMs = if (sameBoot && now >= start) now - start else 0L
+        resetDailyCountersIfNewDay()
+        prefs.edit()
+            .putLong(KEY_PARENT_EXCLUDED_MS, prefs.getLong(KEY_PARENT_EXCLUDED_MS, 0L) + usedMs)
+            .remove(KEY_PARENT_SESSION_START)
+            .remove(KEY_PARENT_SESSION_TOUCH)
+            .remove(KEY_PARENT_SESSION_BOOT)
+            .commit()
+    }
+
+    /** Screen time used by the parent today (finished and ongoing sessions), not the child. */
+    fun getParentUsedMinutesToday(): Long {
+        resetDailyCountersIfNewDay()
+        val start = prefs.getLong(KEY_PARENT_SESSION_START, 0L)
+        val ongoing = if (isParentSessionActive()) elapsedRealtime() - start else 0L
+        return (prefs.getLong(KEY_PARENT_EXCLUDED_MS, 0L) + ongoing) / 60_000L
+    }
+
+    private fun isInCall(): Boolean {
+        val audio = appContext.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager ?: return false
+        return audio.mode == android.media.AudioManager.MODE_IN_CALL ||
+                audio.mode == android.media.AudioManager.MODE_IN_COMMUNICATION
+    }
+
+    private fun bootCount(): Int = try {
+        Settings.Global.getInt(appContext.contentResolver, Settings.Global.BOOT_COUNT)
+    } catch (_: Exception) {
+        0
+    }
+
+    // --- Remote unlock code (TOTP secret is stored encrypted, never in plain text) ---
+    fun getRemoteSecretEncrypted(): String? = prefs.getString(KEY_REMOTE_SECRET, null)
+    fun saveRemoteSecretEncrypted(value: String?) {
+        prefs.edit().apply { if (value == null) remove(KEY_REMOTE_SECRET) else putString(KEY_REMOTE_SECRET, value) }
+            .putLong(KEY_REMOTE_LAST_STEP, 0L)
+            .apply()
+    }
+
+    fun getRemoteLastStep(): Long = prefs.getLong(KEY_REMOTE_LAST_STEP, 0L)
+    fun setRemoteLastStep(step: Long) {
+        prefs.edit().putLong(KEY_REMOTE_LAST_STEP, step).commit()
+    }
+
+    fun getRemoteCodeMinutes(): Long = prefs.getLong(KEY_REMOTE_MINUTES, 15L)
+    fun setRemoteCodeMinutes(minutes: Long) {
+        prefs.edit().putLong(KEY_REMOTE_MINUTES, minutes).apply()
+    }
+
+    fun getRemoteUnlocksToday(): Int {
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        return if (prefs.getString(KEY_REMOTE_COUNT_DAY, "") == today) prefs.getInt(KEY_REMOTE_COUNT, 0) else 0
+    }
+
+    fun incrementRemoteUnlocksToday() {
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        prefs.edit()
+            .putString(KEY_REMOTE_COUNT_DAY, today)
+            .putInt(KEY_REMOTE_COUNT, getRemoteUnlocksToday() + 1)
+            .apply()
+    }
+
+    // --- Appearance ---
+    fun getThemeMode(): String = prefs.getString(KEY_THEME_MODE, "SYSTEM") ?: "SYSTEM"
+    fun setThemeMode(mode: String) {
+        prefs.edit().putString(KEY_THEME_MODE, mode).apply()
+    }
+
+    fun getLanguage(): String = prefs.getString(KEY_LANGUAGE, "SYSTEM") ?: "SYSTEM"
+    fun setLanguage(language: String) {
+        prefs.edit().putString(KEY_LANGUAGE, language).commit()
+    }
+
+    // --- Grant log (shown to the parent in Security) ---
+    fun addGrantLog(method: GrantMethod, description: String) {
+        val array = try {
+            JSONArray(prefs.getString(KEY_GRANT_LOG, "[]"))
+        } catch (_: Exception) {
+            JSONArray()
+        }
+        array.put(JSONObject().apply {
+            put("t", System.currentTimeMillis())
+            put("m", method.name)
+            put("d", description)
+        })
+        val start = (array.length() - MAX_GRANT_LOG).coerceAtLeast(0)
+        val trimmed = JSONArray()
+        for (i in start until array.length()) trimmed.put(array.get(i))
+        prefs.edit().putString(KEY_GRANT_LOG, trimmed.toString()).apply()
+    }
+
+    /** Newest first. */
+    fun getGrantLog(): List<GrantLogEntry> = try {
+        val array = JSONArray(prefs.getString(KEY_GRANT_LOG, "[]"))
+        (0 until array.length()).map { i ->
+            val o = array.getJSONObject(i)
+            GrantLogEntry(o.getLong("t"), GrantMethod.valueOf(o.getString("m")), o.getString("d"))
+        }.reversed()
+    } catch (_: Exception) {
+        emptyList()
     }
 
     // --- Per-App Limits ---
@@ -195,13 +360,14 @@ class PreferencesRepository(context: Context) {
                 .putString(KEY_LAST_RECORDED_DAY, todayStr)
                 .putLong(KEY_BONUS_MINUTES, 0L)
                 .putString(KEY_DAILY_LIMIT_EXCEEDED_DAY, "")
+                .putLong(KEY_PARENT_EXCLUDED_MS, 0L)
                 .apply()
         }
     }
 
     companion object {
-        const val DEFAULT_RECOVERY_KEY = "SHLD-9A4F-K82X-7M1P"
-        private const val KEY_RECOVERY_KEY_RAW = "key_recovery_key_raw"
+        private const val KEY_RECOVERY_KEY_RAW = "key_recovery_key_raw" // legacy, removed on load
+        private const val KEY_RECOVERY_KEY_SALT = "key_recovery_key_salt"
         private const val KEY_PIN_HASH = "key_pin_hash"
         private const val KEY_PIN_SALT = "key_pin_salt"
         private const val KEY_RECOVERY_KEY_HASH = "key_recovery_key_hash"
@@ -226,6 +392,24 @@ class PreferencesRepository(context: Context) {
         private const val KEY_APP_LIMITS_JSON = "key_app_limits_json"
         private const val KEY_LAST_RECORDED_DAY = "key_last_recorded_day"
         private const val KEY_DAILY_LIMIT_EXCEEDED_DAY = "key_daily_limit_exceeded_day"
-        private const val KEY_CURFEW_OVERRIDE_UNTIL = "key_curfew_override_until"
+        private const val KEY_BEDTIME_PAUSED_UNTIL = "key_bedtime_paused_until"
+        private const val KEY_LIMIT_PAUSED_UNTIL = "key_limit_paused_until"
+        private const val KEY_PARENT_SESSION_START = "key_parent_session_start"
+        private const val KEY_PARENT_SESSION_TOUCH = "key_parent_session_touch"
+        private const val KEY_PARENT_SESSION_BOOT = "key_parent_session_boot"
+        private const val KEY_PARENT_EXCLUDED_MS = "key_parent_excluded_ms"
+        private const val KEY_GRANT_LOG = "key_grant_log"
+        private const val KEY_THEME_MODE = "key_theme_mode"
+        private const val KEY_LANGUAGE = "key_language"
+        private const val KEY_REMOTE_SECRET = "key_remote_secret"
+        private const val KEY_REMOTE_LAST_STEP = "key_remote_last_step"
+        private const val KEY_REMOTE_MINUTES = "key_remote_minutes"
+        private const val KEY_REMOTE_COUNT = "key_remote_count"
+        private const val KEY_REMOTE_COUNT_DAY = "key_remote_count_day"
+        private const val MAX_GRANT_LOG = 50
+
+        // Hard end even if someone keeps touching: a child handed the phone gets at most this.
+        const val PARENT_SESSION_MAX_MS = 10 * 60_000L
+        const val PARENT_SESSION_IDLE_MS = 5 * 60_000L
     }
 }

@@ -2,11 +2,4 @@
     <string name="app_name">ShieldChild</string>
     <string name="accessibility_service_description">ShieldChild Security Guard monitors app usage limits and prevents unauthorized access to protected system settings.</string>
     <string name="device_admin_description">ShieldChild Device Administrator ensures screen time limits and curfews cannot be uninstalled without parent approval.</string>
-    <string name="curfew_title">Phone Locked for Today</string>
-    <string name="curfew_subtitle">Daily screen time limit has been reached. Time to rest!</string>
-    <string name="app_locked_title">App Paused</string>
-    <string name="app_locked_subtitle">Time limit reached for this app.</string>
-    <string name="emergency_call">Emergency SOS</string>
-    <string name="parent_unlock">Parent Unlock</string>
-    <string name="request_extension">Request +15 Minutes</string>
 </resources>
