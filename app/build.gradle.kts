@@ -10,8 +10,13 @@ plugins {
 val localProps = Properties().apply {
     rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
-fun signingValue(name: String): String? = localProps.getProperty(name) ?: System.getenv(name)
+// CI passes unset secrets as empty strings, so blank counts as missing.
+fun signingValue(name: String): String? =
+    (localProps.getProperty(name) ?: System.getenv(name))?.takeIf { it.isNotBlank() }
 val releaseStorePassword = signingValue("SHIELD_STORE_PASSWORD")
+// CI points SHIELD_STORE_FILE at the decoded keystore; locally it sits next to this file.
+val releaseStoreFile = (signingValue("SHIELD_STORE_FILE")?.let { file(it) } ?: file("shieldchild-release.jks"))
+    .takeIf { it.exists() }
 
 android {
     namespace = "com.shieldchild.app"
@@ -31,9 +36,11 @@ android {
     }
 
     signingConfigs {
-        if (releaseStorePassword != null) {
+        // Signed only when both the password and the keystore are really there; otherwise an
+        // unsigned release APK is built (pull requests, forks, machines without the key).
+        if (releaseStorePassword != null && releaseStoreFile != null) {
             create("release") {
-                storeFile = file(signingValue("SHIELD_STORE_FILE") ?: "shieldchild-release.jks")
+                storeFile = releaseStoreFile
                 storePassword = releaseStorePassword
                 keyAlias = signingValue("SHIELD_KEY_ALIAS") ?: "shieldchild"
                 keyPassword = signingValue("SHIELD_KEY_PASSWORD") ?: releaseStorePassword
