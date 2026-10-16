@@ -90,7 +90,9 @@ class UsageMonitor(private val context: Context) {
         /**
          * Foreground time per package in milliseconds. An app counts as in front from its first
          * activity resuming until its last one pauses, so apps with several screens aren't
-         * double-counted. A pause with no resume today means the app was opened before midnight.
+         * double-counted. Only an app whose first event today is a pause was opened before midnight:
+         * a later stray pause (a screen that closes before it resumes, e.g. the package installer)
+         * must not be billed back to 00:00.
          */
         fun aggregate(
             events: List<UsageEventLite>,
@@ -107,7 +109,6 @@ class UsageMonitor(private val context: Context) {
             }
             for (e in events) {
                 if (isExcluded(e.packageName)) continue
-                val key = e.packageName + "/" + e.className
                 val open = resumed.getOrPut(e.packageName) { mutableSetOf() }
                 when (e.type) {
                     UsageEvents.Event.ACTIVITY_RESUMED -> {
@@ -117,12 +118,12 @@ class UsageMonitor(private val context: Context) {
                     UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED -> {
                         if (open.remove(e.className)) {
                             if (open.isEmpty()) add(e.packageName, e.time - (since.remove(e.packageName) ?: e.time))
-                        } else if (key !in seen && open.isEmpty()) {
+                        } else if (e.packageName !in seen) {
                             add(e.packageName, e.time - startOfDay)
                         }
                     }
                 }
-                seen.add(key)
+                seen.add(e.packageName)
             }
             for ((pkg, start) in since) {
                 if (resumed[pkg].orEmpty().isNotEmpty()) add(pkg, now - start)

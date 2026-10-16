@@ -34,6 +34,19 @@ class UsageAndClockTest {
     }
 
     @Test
+    fun strayPauseLaterInTheDayIsNotBilledBackToMidnight() {
+        // Package installer at 13:42: a screen pauses before it ever resumes.
+        val events = listOf(
+            ev("installer", ACTIVITY_RESUMED, 822, "Installing"),
+            ev("installer", ACTIVITY_PAUSED, 823, "Installing"),
+            ev("installer", ACTIVITY_PAUSED, 823, "Failed"),
+            ev("installer", ACTIVITY_RESUMED, 824, "Failed"),
+            ev("installer", ACTIVITY_PAUSED, 825, "Failed")
+        )
+        assertEquals(2 * 60_000L, UsageMonitor.aggregate(events, midnight, min(830), none)["installer"])
+    }
+
+    @Test
     fun appWithSeveralScreensIsNotDoubleCounted() {
         val events = listOf(
             ev("yt", ACTIVITY_RESUMED, 0, "Home"),
