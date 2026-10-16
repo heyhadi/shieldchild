@@ -68,7 +68,11 @@ class UsageMonitor(private val context: Context) {
         }
 
         val perAppMinutes = appUsageMillis.mapValues { (_, millis) -> millis / 60000L }
-        val totalMinutes = perAppMinutes.values.sum()
+        // The parent's own use during a parent session doesn't count against the child.
+        // shortcut: per-app totals still include it; split by app if parents use limited apps a lot.
+        val parentMinutes = (context.applicationContext as? com.shieldchild.app.ShieldApplication)
+            ?.preferencesRepository?.getParentUsedMinutesToday() ?: 0L
+        val totalMinutes = (perAppMinutes.values.sum() - parentMinutes).coerceAtLeast(0L)
 
         return DailyUsageSummary(
             totalDeviceUsageMinutes = totalMinutes,

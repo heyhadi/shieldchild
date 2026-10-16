@@ -1,0 +1,4 @@
+<resources>
+    <string name="accessibility_service_description">ShieldChild menjaga batas pemakaian aplikasi dan mencegah akses tanpa izin ke pengaturan sistem yang dilindungi.</string>
+    <string name="device_admin_description">Admin perangkat ShieldChild memastikan batas waktu layar dan jam tidur tidak bisa dihapus tanpa izin orang tua.</string>
+</resources>

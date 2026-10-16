@@ -1,7 +1,8 @@
 # ShieldChild – Total Review & Improvement Plan
 
 > **Audience:** an AI coding agent (or developer) executing fixes in this repo.
-> **Reviewed:** commit `e93b6d3` (main), 16 Oct 2026. Read-only review; nothing was changed.
+> **Reviewed:** commit `e93b6d3` (main), 16 Oct 2026. Updated 16 Oct with the owner's decisions on parent unlock (BUG-2a/2b/2c) and the remote unlock code (FEAT-1).
+> **Already done on branch `fix/p0-security`:** SEC-1, SEC-2, SEC-3, SEC-6, SEC-8, SEC-9, BUG-1, UI-1, UI-2, UI-3, BUG-6 (persisted flag), parts of SEC-10 (current PIN + confirm, no per-keystroke check, FLAG_SECURE), BUG-2a/2b/2c (choice screen, parent session with 10-min cap, grant log), FEAT-1 (remote unlock code, 15 min default, 3/day), and Kotlin tests (31) for `PolicyEngine`, `ParentAuthManager`, `Totp`, `RemoteCodeManager` and `AccessGrants`. Also done: one colour palette with light/dark mode (`ui/theme/Color.kt`, `Shield.colors`), one dialog style (`ui/components/ShieldDialog.kt`, `PinField`), Settings (Appearance, Language, App updates, Feedback, About), in-app updates from GitHub Releases (`update/UpdateManager.kt`, tags `vX.Y.Z-<versionCode>`), Indonesian translation (`res/values-in/strings_ui.xml`, semi-casual "kamu" tone, picked in Settings), and UI-5 (real bedtime in the Overview footer). Re-check these before starting work.
 > **How to use:** work top to bottom. Each task has an ID, the files involved, what is wrong, what to do and an **acceptance check**. Do one task per commit (`fix(SEC-1): …`). Do not start a P1 task while a P0 task is still open.
 
 Legend: **P0** = ship-blocker / kid can bypass / parent locked out · **P1** = feature broken or misleading · **P2** = quality, UX, maintainability · **P3** = nice to have.
@@ -111,8 +112,48 @@ Legend: **P0** = ship-blocker / kid can bypass / parent locked out · **P1** = f
 ### BUG-2 · Parent "Unlock" with PIN is undone within 0.5 s  — *Verified (logic) / verify on device* — **P1**
 - **Files:** `ui/curfew/CurfewLockActivity.kt:73-82` vs `:88-104`
 - **Problem:** a successful PIN unlock only clears `instantLock` and `dailyExceeded`, then calls `finish()`. If bedtime or the daily limit still applies, the next monitor tick relaunches the lock. The fingerprint unlock instead grants +30 min and an override. Two paths that look the same behave differently.
-- **Do:** give the parent an explicit choice after either kind of auth: "+15 min", "+30 min", "+1 h", "Unlock until tomorrow" (override until the curfew end or midnight) or "Open dashboard". Both PIN and fingerprint go through the same `grantAccess(duration)` function.
-- **Accept:** after a PIN unlock during bedtime, the phone stays unlocked for the chosen duration.
+- **Also wrong today:** unlocking and giving the child time are treated as the same thing. A fingerprint unlock silently gives +30 min. With 0 allowance left, a parent can't use the phone without handing time to the child, and the parent's own use counts against the child's limit.
+- **Owner decision (16 Oct 2026):** unlocking must **never** give time by itself. Implement the choice screen and the parent session below together.
+
+#### BUG-2a · Choice screen after parent auth
+After a correct PIN or fingerprint on the lock screen (one shared function for both), show:
+1. **Parent access only** (default, first option) → starts a parent session (BUG-2b). The child gets no time.
+2. **Give more time:** +15 min / +30 min / +1 h.
+3. **Unlock for the rest of today** (or "until bedtime ends" when the bedtime lock is the active one).
+4. **Turn off instant lock** (shown only when the active reason is `PARENT_INSTANT_FREEZE`).
+
+Rules for granted time (options 2 and 3):
+- Use one function, `grantAccess(minutes, reason)`.
+- Lift **only the active lock**: bedtime → pause bedtime; daily limit → add bonus minutes. Don't lift both like today's `addBonusMinutes` + `grantTemporaryCurfewOverride`.
+- App limits (blocked apps) still apply.
+- The time counts as normal screen time.
+- Show a warning at 5 min and 1 min before it ends.
+- Instant lock pauses the child's time and doesn't use it up. Turning it off returns the remaining allowance.
+
+#### BUG-2b · Parent session
+"Parent access only" lets the parent use the phone normally while the child's allowance stays at 0.
+- **State:** a persisted `parentSessionStartedAt` / `parentSessionActive` flag. While active:
+  - `PolicyEngine.evaluateDeviceLock` returns `null`. Instant lock still wins.
+  - Usage between session start and end is **excluded** from the child's daily total (subtract the session's foreground time, or pause accounting).
+- **Ends at the first of:**
+  - the parent taps **Lock again** (a persistent notification and/or a small banner: "Parent mode, tap to lock"),
+  - the screen turns off (`ACTION_SCREEN_OFF`), **except during an active phone call** (`TelephonyManager.callState != IDLE`; the screen also goes off from the proximity sensor while the phone is at your ear),
+  - **5 minutes with no touch** (track last user interaction via accessibility events; a constant, no setting yet),
+  - a **10-minute total cap** (owner decision, 16 Oct 2026), even if someone keeps touching the screen, so a child handed the phone unlocked gets at most 10 minutes. The parent signs in again if needed. An active phone call is never cut off: the cap and idle rules pause while a call is in progress.
+  - Blocked and used-up **app limits stay on** during a parent session, and tamper protection stays on.
+- **When it ends:** clear the flag, re-run the policy check immediately, and show the lock again if the child still has no allowance.
+- **Survives restarts:** after a reboot or process death, a session flag older than the cap counts as ended. A session flag found at boot is always cleared, so a reboot always locks.
+
+#### BUG-2c · Grant log
+Record every grant: who/how (PIN, fingerprint, remote code), duration, and time. Show it in Security → Activity, so a parent sees a grant they didn't make. Part of FEAT-2.
+
+- **Accept:**
+  - (a) With 0 allowance, PIN → Parent access only → use Settings for 3 min → power button → the phone is locked and the child's usage did not grow by 3 min.
+  - (b) Same, but hand the phone back with the screen on → it locks within 5 min of no touch, and within 10 min even if the child keeps touching.
+  - (c) A 10-minute call during a parent session isn't cut off when the screen turns off at the ear.
+  - (d) PIN → +30 min during bedtime → unlocked for 30 min, then locked, with warnings at 5 and 1 min.
+  - (e) A fingerprint unlock no longer gives time by itself.
+  - (f) Kotlin unit tests cover the session end conditions and the "lift only the active lock" rule.
 
 ### BUG-3 · Single-app lock overlay is added from a background thread  — *Verify on device* — **P0**
 - **Files:** `service/ShieldMonitorService.kt:31, 96-109`, `overlay/AppShieldOverlayManager.kt`
@@ -202,7 +243,7 @@ Line numbers are approximate. All items were verified by reading the code.
 
 | ID | Gap | Why it matters | Suggested scope |
 |----|-----|----------------|-----------------|
-| FEAT-1 | **Remote approval for "+15 min"** | Today it's in-person PIN/fingerprint or an SMS that only *asks*. The parent has to physically take the phone. | v1: SMS reply code. Show a 6-digit one-time code on the lock screen; the parent replies with an HMAC code derived from the PIN and time, or reads it out over a call. v2: optional parent companion app (pairing by QR, Firebase/ntfy push). |
+| FEAT-1 | **Remote unlock code (parent away)** | Today extra time needs the parent next to the phone. | See the full spec under **FEAT-1** below this table. Offline authenticator code (TOTP); no server. |
 | FEAT-2 | **Tamper / activity log for the parent** | Silent bypass attempts are invisible. | Local log: time changed, accessibility disabled, overlay revoked, uninstall attempt, recovery key used, wrong PINs. Shown in the Security tab. |
 | FEAT-3 | **Health check / degraded-protection banner** | If any permission is revoked (e.g. Android auto-revokes it, or an OEM battery killer stops the service), protection silently stops. | Dashboard status card that is red when any of these is missing: Usage Access, Overlay, Accessibility, Device Admin, battery-optimisation exemption, notifications. "Fix" button for each. |
 | FEAT-4 | **Battery-optimisation exemption + OEM guidance** | OnePlus/Xiaomi/Samsung kill foreground services. | Ask for `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` in onboarding, and add links per manufacturer (dontkillmyapp.com). |
@@ -212,6 +253,48 @@ Line numbers are approximate. All items were verified by reading the code.
 | FEAT-8 | **Weekly usage history** | Parents want trends. | Keep 7–30 days of `{date, total, perApp}` in local storage, shown as a simple bar chart. |
 | FEAT-9 | **Backup/export of settings** | Reinstalling loses everything. | Export or import a JSON file protected by the PIN. Never include the PIN or recovery hash. |
 | FEAT-10 | **Localisation** | The owner is in Singapore. Text is hard-coded English ("Hi Mom/Dad"). | Move all strings to `strings.xml`. Add `ms`/`id`/`zh` later. |
+
+### FEAT-1 · Remote unlock code with an authenticator app (TOTP) — **P1, build right after BUG-2a/2b**
+
+**Goal:** when the parent is away, the child calls them from the lock screen, the parent reads a 6-digit code from Google Authenticator (or any TOTP app), and the child types it to unlock for a parent-chosen time. Works with **no internet on either phone, no account and no server**.
+
+**Depends on:** BUG-4 ("Call parent" must work on the lock screen), SEC-4 (clock tampering), BUG-2a (`grantAccess`), BUG-2c (grant log).
+
+**Setup (Security → Remote unlock code, behind the PIN):**
+1. Generate a 20-byte secret with `SecureRandom`. Store it **encrypted** with an AES-GCM key in the Android Keystore (it can't be hashed: the phone needs the real secret to compute codes). Never log it.
+2. Show it once as a QR code of `otpauth://totp/ShieldChild:<childName>?secret=<BASE32>&issuer=ShieldChild&algorithm=SHA1&digits=6&period=30`, plus the Base32 text (grouped in 4s) for manual entry. FLAG_SECURE is already on this activity.
+3. Ask the parent to type the current code from their authenticator to confirm the scan before closing. If it's wrong, let them retry. The QR code is never shown again.
+4. Show "Set up again" (replaces the secret, so old authenticator entries stop working) and "Turn off". Both need the PIN.
+5. Copy for the screen: "Scan this with Google Authenticator on the parent's phone. Never let your child scan it. Both parents can scan it now."
+
+**Settings (fixed choices, Option A):**
+- **A code gives:** **15 min (default, owner decision 16 Oct 2026)** / 30 min / 1 h / until the current lock ends today.
+- **Max code unlocks per day:** **3** (constant for now).
+
+**Lock screen (child):**
+- New button **"I have a code from my parent"**, which opens a 6-digit number pad.
+- Verify with HMAC-SHA1 TOTP (RFC 6238) at steps `now-1, now, now+1`.
+- Reject any step ≤ the last accepted step (persisted), so each code works only once.
+- Wrong codes use the **same lockout counter** as the PIN (5 tries → 15 min).
+- On success, call `grantAccess(setting, reason = REMOTE_CODE)` (same rules as BUG-2a: lifts only the active lock, app limits still apply, warnings at 5 and 1 min) and log "Remote code, <duration>, <time>".
+- Over the daily cap: show "Today's code unlocks are used up. Call your parent."
+- Messages: wrong code → "Code not accepted, N tries left"; expired → "That code has expired, ask for the new one".
+
+**Implementation notes:**
+- TOTP itself is about 15 lines with `javax.crypto.Mac("HmacSHA1")`, the standard dynamic truncation and `% 1_000_000`, zero-padded to 6 digits. Base32 encoding is a ~15-line helper; no library is needed.
+- The QR code needs `com.google.zxing:core` (render a `BitMatrix` to an `ImageBitmap`). This is the only new dependency.
+- Keep the TOTP math in `engine/Totp.kt` (pure, no Android), and the storage and lockout in `ParentAuthManager`.
+- **Open question for the owner:** should a code also lift a parent **instant lock**? Default: **no**. Instant lock is a deliberate in-person decision, so the lock screen says "Locked by parent, a code can't unlock this".
+
+**Accept:**
+- Unit tests pass the RFC 6238 Appendix B test vectors (SHA1, 8 digits; also check 6-digit truncation), a ±1 step window, replay rejection, and lockout on wrong codes.
+- Manual test: scan with Google Authenticator → the code shown in the app equals the code the phone accepts → 15 min unlock (warning at 5 and 1 min) → lock returns. The same code typed again is rejected. A 4th code in one day is rejected.
+- `grep` shows the secret is never written unencrypted (prefs contain only ciphertext + IV).
+
+**Later options (not now):**
+- **Several codes for different lengths:** scan 2–3 QR codes with their own secrets ("Leo +15 min", "Leo +1 h", "Leo today"), so the parent can choose on the spot.
+- **SMS command:** the parent texts a code, so the child doesn't type it. Needs RECEIVE_SMS (restricted on the Play Store).
+- **Parent companion app with push:** breaks "100% on-device", so ask the owner first.
 
 ---
 
@@ -278,14 +361,35 @@ After the P0 fixes, publish **v1.0.1** with a short security notice: "Update now
 
 ---
 
+## 6b. Results from the on-device test (OnePlus 6, Android 15, 16 Oct 2026)
+
+Tested by driving the phone over adb; the owner typed the PIN or used fingerprint when needed.
+
+| Check | Result |
+|---|---|
+| PIN gate shown every time the dashboard is reopened | ✅ |
+| Instant lock → choice screen shows only "Use the phone myself" / "Turn off instant lock" | ✅ |
+| Parent access → phone usable, "Parent mode" notification; power off/on → locked again | ✅ |
+| Bedtime lock → choice screen shows +15 / +30 / +1 h / "No bedtime tonight" | ✅ |
+| Remote code: QR scanned with Google Authenticator, confirm code accepted, status "On, 15 min" | ✅ |
+| Remote code typed on the bedtime lock screen → unlocked, logged as "+15 min · Remote code" | ✅ |
+| Recent unlocks log lists every unlock with method and time | ✅ |
+| **Bug found → fixed:** after a remote-code unlock, the parent dashboard reopened **without a PIN** (the dashboard kept its sign-in while covered by the lock screen). Fix: the lock screen now signs the dashboard out whenever it shows. Verified on the phone. | ✅ fixed |
+| **Bug found → fixed:** the monitor relaunches the lock every 0.5 s (BUG-7). One relaunch raced with "Turn off instant lock" and left a stuck lock screen. Fix: the lock screen re-checks the rules every 2 s and closes itself when nothing is locked. Verified on the phone. BUG-7 itself is still open. | ✅ mitigated |
+| **Confirmed, still open:** with a bedtime that starts while the parent is in the dashboard, the lock covers the signed-in dashboard (the parent is locked out mid-edit). Exempt the dashboard while the parent is signed in, or start a parent session on dashboard sign-in. | ❌ open (new: UI-17) |
+| **Confirmed, still open:** the Overview footer says "Bedtime lock 9:00 PM – 7:00 AM" while the real setting was 8:00 PM (UI-5). | ❌ open |
+| **Confirmed, still open:** `CurfewLockActivity` can be started by other apps or adb (`exported="true"`, SEC-7). | ❌ open |
+
+Not tested on the device: the +15/+30/+1 h grants with warnings at 5 and 1 min, the 5-min idle and 10-min caps (covered by unit tests only), a call during a parent session, and the fingerprint switching off after a new fingerprint is enrolled.
+
 ## 7. Suggested execution order
 
 1. SEC-1, SEC-2, SEC-6, SEC-8, SEC-9, UI-2 (small, urgent) → **v1.0.1**.
-2. BUG-1 + UI-1, BUG-3, BUG-4 + UI-6, BUG-6, SEC-10 + TEST-1/TEST-2.
-3. SEC-3, SEC-4, SEC-5, SEC-7, BUG-2, BUG-5, BUG-7, BUG-8, BUG-9, UI-3…UI-16.
+2. BUG-1 + UI-1, BUG-2a/2b/2c (choice screen + parent session + grant log), BUG-3, BUG-4 + UI-6, BUG-6, SEC-10 + TEST-1/TEST-2.
+3. FEAT-1 (remote unlock code), then SEC-3, SEC-4, SEC-5, SEC-7, BUG-5, BUG-7, BUG-8, BUG-9, UI-3…UI-16.
 4. FEAT-3 (health banner), FEAT-4, FEAT-7, FEAT-2.
 5. ARCH-1…5, DOC-1, DOC-3, CI.
-6. FEAT-1, FEAT-5, FEAT-6, FEAT-8…10.
+6. FEAT-5, FEAT-6, FEAT-8…10.
 7. TEST-3 on two devices → screenshots → README → **v1.1.0**.
 
 ## 8. Ground rules for the executing agent

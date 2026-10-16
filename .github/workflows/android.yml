@@ -1,0 +1,128 @@
+name: Android
+
+# Pull requests: unit tests + an unsigned release build, to catch breakage before merge.
+# Pushes to main (and manual runs): the same, then a signed APK published as a GitHub Release
+# tagged v1.0.<versionCode>-<versionCode>, which the in-app updater (UpdateManager.kt) offers.
+on:
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'gradle/**'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+      - 'gradlew'
+      - '.github/workflows/android.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'gradle/**'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+      - 'gradlew'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+# A newer push cancels the run still going, so an older build can never become the "latest" release.
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      # Local builds are 1.0.1 (build 2); CI builds continue above that.
+      VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # Caches the Gradle distribution, dependencies, build cache and configuration cache between
+      # runs. Only main writes the cache, so pull requests can't fill it with throwaway entries.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Version
+        id: version
+        run: |
+          CODE=$(( VERSION_CODE + 2 ))
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "name=1.0.$CODE" >> "$GITHUB_OUTPUT"
+          echo "Building 1.0.$CODE (versionCode $CODE)"
+
+      - name: Decode release keystore
+        if: github.event_name != 'pull_request'
+        # Secrets come in through env, never pasted into the script text.
+        env:
+          KEYSTORE_BASE64: ${{ secrets.SHIELD_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "No signing secrets: building unsigned, nothing will be published."
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "SHIELD_STORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          echo "SIGNED=true" >> "$GITHUB_ENV"
+
+      # One Gradle invocation: tests and the APK share configuration and compiled classes.
+      # Release variant only (no debug compile); release lint is off in app/build.gradle.kts.
+      - name: Test and build
+        env:
+          SHIELD_STORE_PASSWORD: ${{ secrets.SHIELD_STORE_PASSWORD }}
+          SHIELD_KEY_PASSWORD: ${{ secrets.SHIELD_KEY_PASSWORD }}
+          SHIELD_KEY_ALIAS: ${{ secrets.SHIELD_KEY_ALIAS }}
+        run: >
+          ./gradlew testReleaseUnitTest assembleRelease
+          -PversionCode=${{ steps.version.outputs.code }}
+          -PversionName=${{ steps.version.outputs.name }}
+
+      - name: Test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: app/build/reports/tests/
+          retention-days: 7
+
+      - name: Prepare APK
+        id: apk
+        run: |
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          cp "$APK" shieldchild.apk
+          SHA=$(sha256sum shieldchild.apk | cut -d' ' -f1)
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "size=$(du -m shieldchild.apk | cut -f1)" >> "$GITHUB_OUTPUT"
+          echo "SHA-256: $SHA"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shieldchild-${{ steps.version.outputs.name }}
+          path: shieldchild.apk
+          retention-days: 14
+
+      # Only signed builds are published: an unsigned or differently signed APK can't update installed phones.
+      - name: Publish GitHub Release
+        if: env.SIGNED == 'true' && github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.name }}-${{ steps.version.outputs.code }}
+          name: ShieldChild v${{ steps.version.outputs.name }}
+          body: |
+            Automated build from main (${{ github.sha }}).
+            Download `shieldchild.apk` (about ${{ steps.apk.outputs.size }} MB) and install it on the child's phone (Android 8 or newer).
+            Phones on 1.0.1 or newer can also update from Settings → App updates.
+
+            SHA-256 of `shieldchild.apk`:
+            ```
+            ${{ steps.apk.outputs.sha256 }}
+            ```
+          files: shieldchild.apk

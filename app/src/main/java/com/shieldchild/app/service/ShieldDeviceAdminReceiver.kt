@@ -1,5 +1,7 @@
 package com.shieldchild.app.service
 
+import com.shieldchild.app.i18n.str
+import com.shieldchild.app.R
 import android.app.admin.DeviceAdminReceiver
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
@@ -12,7 +14,7 @@ class ShieldDeviceAdminReceiver : DeviceAdminReceiver() {
 
     override fun onEnabled(context: Context, intent: Intent) {
         super.onEnabled(context, intent)
-        Toast.makeText(context, "ShieldChild Device Admin Activated", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, str(R.string.shieldchild_device_admin_activated), Toast.LENGTH_SHORT).show()
     }
 
     override fun onProfileProvisioningComplete(context: Context, intent: Intent) {
@@ -22,7 +24,7 @@ class ShieldDeviceAdminReceiver : DeviceAdminReceiver() {
 
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
         // Warning when someone attempts to deactivate Device Admin
-        return "Deactivating ShieldChild requires Parent Master PIN. Unauthorized deactivation will lock the device."
+        return str(R.string.deactivating_shieldchild_requires_parent_master)
     }
 
     companion object {

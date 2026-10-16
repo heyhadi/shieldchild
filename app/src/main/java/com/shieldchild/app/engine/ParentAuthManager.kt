@@ -4,6 +4,8 @@ import com.shieldchild.app.data.PreferencesRepository
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.PBEKeySpec
 
 sealed class AuthResult {
     object Success : AuthResult()
@@ -14,106 +16,126 @@ sealed class AuthResult {
 class ParentAuthManager(private val repository: PreferencesRepository) {
 
     fun setMasterPin(pin: String) {
-        require(pin.length in 4..8) { "PIN must be between 4 and 8 digits" }
+        require(pin.length in 4..8 && pin.all { it.isDigit() }) { "PIN must be 4 to 8 digits" }
         val salt = generateSalt()
-        val hash = hashPin(pin, salt)
-        repository.savePin(hash, salt)
+        repository.savePin(hashSecret(pin, salt), salt)
+        resetFailures()
+    }
+
+    fun verifyPin(enteredPin: String): AuthResult {
+        lockoutRemaining()?.let { return it }
+
+        val storedHash = repository.getPinHash()
+        val salt = repository.getPinSalt()
+        // No PIN configured means nobody can authenticate; setup must create one.
+        if (storedHash == null || salt == null) return AuthResult.InvalidPin(MAX_FAILED_ATTEMPTS)
+
+        return if (matches(enteredPin, storedHash, salt)) {
+            if (!storedHash.startsWith(PBKDF2_PREFIX)) setMasterPin(enteredPin) // upgrade legacy SHA-256 hash
+            resetFailures()
+            AuthResult.Success
+        } else {
+            recordFailure()
+        }
+    }
+
+    fun hasRecoveryKey(): Boolean = repository.getRecoveryKeyHash() != null
+
+    /**
+     * Creates a new random recovery key, stores only its hash and returns the raw key
+     * so it can be shown to the parent exactly once.
+     */
+    fun generateRecoveryKey(): String {
+        val random = SecureRandom()
+        val raw = (1..RECOVERY_KEY_LENGTH)
+            .map { RECOVERY_ALPHABET[random.nextInt(RECOVERY_ALPHABET.length)] }
+            .joinToString("")
+        val salt = generateSalt()
+        repository.saveRecoveryKeyHash(hashSecret(raw, salt), salt)
+        return raw.chunked(4).joinToString("-")
+    }
+
+    /**
+     * Emergency offline recovery: resets the PIN when the parent's recovery key matches.
+     * Wrong keys count towards the same lockout as wrong PINs.
+     */
+    fun recoverWithMasterKey(recoveryKey: String, newPin: String): Boolean {
+        if (newPin.length !in 4..8 || !newPin.all { it.isDigit() }) return false
+        if (lockoutRemaining() != null) return false
+
+        val storedHash = repository.getRecoveryKeyHash() ?: return false
+        val salt = repository.getRecoveryKeySalt() ?: return false
+        val sanitizedKey = recoveryKey.replace("-", "").replace(" ", "").trim().uppercase()
+
+        if (!matches(sanitizedKey, storedHash, salt)) {
+            recordFailure()
+            return false
+        }
+        setMasterPin(newPin)
+        return true
+    }
+
+    /** Shared by PIN, recovery key and remote codes so guesses across all of them count together. */
+    fun lockoutRemaining(): AuthResult.LockedOut? {
+        val lockoutUntil = repository.getLockoutUntilTimestamp()
+        val now = System.currentTimeMillis()
+        return if (lockoutUntil > now) {
+            AuthResult.LockedOut(TimeUnit.MILLISECONDS.toSeconds(lockoutUntil - now))
+        } else {
+            null
+        }
+    }
+
+    fun recordFailure(): AuthResult {
+        val failed = repository.getFailedAttempts() + 1
+        repository.setFailedAttempts(failed)
+        return if (failed >= MAX_FAILED_ATTEMPTS) {
+            repository.setLockoutUntilTimestamp(System.currentTimeMillis() + LOCKOUT_DURATION_MS)
+            AuthResult.LockedOut(TimeUnit.MILLISECONDS.toSeconds(LOCKOUT_DURATION_MS))
+        } else {
+            AuthResult.InvalidPin(MAX_FAILED_ATTEMPTS - failed)
+        }
+    }
+
+    fun resetFailures() {
         repository.setFailedAttempts(0)
         repository.setLockoutUntilTimestamp(0)
     }
 
-    fun verifyPin(enteredPin: String): AuthResult {
-        val now = System.currentTimeMillis()
-        val lockoutUntil = repository.getLockoutUntilTimestamp()
-
-        if (lockoutUntil > now) {
-            val remainingSec = TimeUnit.MILLISECONDS.toSeconds(lockoutUntil - now)
-            return AuthResult.LockedOut(remainingSec)
-        }
-
-        val storedHash = repository.getPinHash()
-        val salt = repository.getPinSalt()
-
-        // Fallback for first launch if no PIN set yet: default is "1234"
-        if (storedHash == null || salt == null) {
-            if (enteredPin == "1234") {
-                setMasterPin("1234")
-                return AuthResult.Success
-            } else {
-                return AuthResult.InvalidPin(MAX_FAILED_ATTEMPTS - 1)
-            }
-        }
-
-        val enteredHash = hashPin(enteredPin, salt)
-        if (MessageDigest.isEqual(storedHash.toByteArray(), enteredHash.toByteArray())) {
-            repository.setFailedAttempts(0)
-            repository.setLockoutUntilTimestamp(0)
-            return AuthResult.Success
-        } else {
-            val failed = repository.getFailedAttempts() + 1
-            repository.setFailedAttempts(failed)
-
-            if (failed >= MAX_FAILED_ATTEMPTS) {
-                val lockoutExpiry = now + LOCKOUT_DURATION_MS
-                repository.setLockoutUntilTimestamp(lockoutExpiry)
-                return AuthResult.LockedOut(TimeUnit.MILLISECONDS.toSeconds(LOCKOUT_DURATION_MS))
-            } else {
-                return AuthResult.InvalidPin(MAX_FAILED_ATTEMPTS - failed)
-            }
-        }
+    private fun matches(secret: String, storedHash: String, salt: String): Boolean {
+        val computed = if (storedHash.startsWith(PBKDF2_PREFIX)) hashSecret(secret, salt) else legacySha256(secret, salt)
+        return MessageDigest.isEqual(storedHash.toByteArray(), computed.toByteArray())
     }
 
-    fun getOrInitMasterRecoveryKey(): String {
-        val key = repository.getMasterRecoveryKey()
-        if (repository.getRecoveryKeyHash() == null) {
-            setMasterRecoveryKey(key)
-        }
-        return key
+    private fun hashSecret(secret: String, salt: String): String {
+        val spec = PBEKeySpec(secret.toCharArray(), salt.toByteArray(), PBKDF2_ITERATIONS, 256)
+        val bytes = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
+        spec.clearPassword()
+        return PBKDF2_PREFIX + bytes.toHex()
     }
 
-    /**
-     * Emergency offline recovery: Parent enters their 16-character Master Recovery Key.
-     * Bypasses PIN lockout and resets PIN to a new value.
-     */
-    fun recoverWithMasterKey(recoveryKey: String, newPin: String): Boolean {
-        if (newPin.length < 4 || newPin.length > 8 || !newPin.all { it.isDigit() }) {
-            return false
-        }
-        val sanitizedKey = recoveryKey.replace("-", "").trim().uppercase()
-        val expectedKey = getOrInitMasterRecoveryKey().replace("-", "").trim().uppercase()
-
-        if (sanitizedKey == expectedKey) {
-            setMasterPin(newPin)
-            repository.setFailedAttempts(0)
-            repository.setLockoutUntilTimestamp(0)
-            return true
-        }
-        return false
-    }
-
-    fun setMasterRecoveryKey(rawKey: String) {
-        val sanitized = rawKey.replace("-", "").trim().uppercase()
-        val salt = repository.getPinSalt() ?: generateSalt()
-        val hash = hashPin(sanitized, salt)
-        repository.saveRecoveryKeyHash(hash)
-    }
-
-    private fun hashPin(pin: String, salt: String): String {
+    private fun legacySha256(secret: String, salt: String): String {
         val md = MessageDigest.getInstance("SHA-256")
         md.update(salt.toByteArray())
-        val bytes = md.digest(pin.toByteArray())
-        return bytes.joinToString("") { "%02x".format(it) }
+        return md.digest(secret.toByteArray()).toHex()
     }
 
     private fun generateSalt(): String {
-        val random = SecureRandom()
         val bytes = ByteArray(16)
-        random.nextBytes(bytes)
-        return bytes.joinToString("") { "%02x".format(it) }
+        SecureRandom().nextBytes(bytes)
+        return bytes.toHex()
     }
+
+    private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 
     companion object {
         const val MAX_FAILED_ATTEMPTS = 5
         val LOCKOUT_DURATION_MS = TimeUnit.MINUTES.toMillis(15)
+
+        private const val PBKDF2_PREFIX = "pbkdf2$"
+        private const val PBKDF2_ITERATIONS = 120_000
+        private const val RECOVERY_KEY_LENGTH = 16
+        // No 0/O or 1/I, so a handwritten key can't be misread.
+        private const val RECOVERY_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     }
 }

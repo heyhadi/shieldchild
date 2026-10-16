@@ -66,3 +66,36 @@ enum class LockReason {
     SCHEDULED_BEDTIME_CURFEW,
     PARENT_INSTANT_FREEZE
 }
+
+/**
+ * Temporary exceptions a parent has granted. Each one lifts only its own kind of lock;
+ * a parent session lifts every lock (the parent is using the phone) until it ends.
+ */
+data class AccessState(
+    val isBedtimePaused: Boolean = false,
+    val isLimitPaused: Boolean = false,
+    val isParentSession: Boolean = false
+)
+
+enum class GrantMethod(@androidx.annotation.StringRes val labelRes: Int) {
+    PIN(com.shieldchild.app.R.string.method_pin),
+    FINGERPRINT(com.shieldchild.app.R.string.method_fingerprint),
+    RECOVERY_KEY(com.shieldchild.app.R.string.method_recovery_key),
+    REMOTE_CODE(com.shieldchild.app.R.string.method_remote_code)
+}
+
+data class GrantLogEntry(
+    val timestamp: Long,
+    val method: GrantMethod,
+    /** A [GrantLog] code, turned into text in the current language when shown. */
+    val description: String
+)
+
+/** Language-neutral codes stored in the grant log. */
+object GrantLog {
+    const val PARENT_ACCESS = "PARENT_ACCESS"
+    const val REST_OF_TODAY = "REST_OF_TODAY"
+    const val BEDTIME_OFF = "BEDTIME_OFF"
+    const val INSTANT_OFF = "INSTANT_OFF"
+    fun minutes(minutes: Long) = "MINUTES:$minutes"
+}

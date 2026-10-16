@@ -17,6 +17,12 @@ class ShieldAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
+        // Touch-driven events keep a parent session alive (it ends after 5 min idle).
+        // Content changes are excluded: a playing video would otherwise keep it open forever.
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            ShieldApplication.instance.preferencesRepository.touchParentSession()
+        }
+
         val eventType = event.eventType
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
             eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
@@ -29,6 +35,8 @@ class ShieldAccessibilityService : AccessibilityService() {
             }
 
             // 2. 24/7 Anti-Uninstall & Anti-Tamper Protection (ACTIVE EVEN DURING ALLOWED USAGE TIME)
+            // Stays on during a parent session: a child handed the phone back unlocked
+            // must not get a window to switch protection off.
             if (!isParentUninstallActive()) {
                 val isSettings = pkgName == "com.android.settings" || pkgName.contains(".settings")
                 val isInstallerOrStore = pkgName.contains("packageinstaller") ||
@@ -80,7 +88,7 @@ class ShieldAccessibilityService : AccessibilityService() {
         val reason = CurfewLockLauncher.evaluateRebootLockReason(
             policy = policy,
             isDailyExceeded = isDailyExceeded,
-            isOverrideActive = repo.isCurfewOverrideActive()
+            access = repo.getAccessState()
         )
 
         if (reason != null) {

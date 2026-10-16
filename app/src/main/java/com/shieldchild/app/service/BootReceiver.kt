@@ -24,6 +24,9 @@ class BootReceiver : BroadcastReceiver() {
             // Only enforce policies if parent has completed setup
             if (!repo.isSetupCompleted()) return
 
+            // A parent session never survives a reboot.
+            if (action != Intent.ACTION_MY_PACKAGE_REPLACED) repo.endParentSession()
+
             // 1. Resurrect background monitoring loop
             try {
                 ShieldMonitorService.start(context)
@@ -35,7 +38,7 @@ class BootReceiver : BroadcastReceiver() {
             val reason = CurfewLockLauncher.evaluateRebootLockReason(
                 policy = policy,
                 isDailyExceeded = isDailyExceeded,
-                isOverrideActive = repo.isCurfewOverrideActive()
+                access = repo.getAccessState()
             )
 
             if (reason != null) {
