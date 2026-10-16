@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ShieldChild Privacy Policy</title>
+    <meta name="description" content="ShieldChild stores all policies and screen time data strictly on your child's phone. No accounts, no cloud servers, no tracking, and no ads." />
+    <link rel="icon" type="image/svg+xml" href="images/icon.svg" />
+    <link rel="stylesheet" href="site.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <nav class="nav" aria-label="Main">
+        <a class="brand" href="./"><img src="images/icon.svg" alt="" />ShieldChild</a>
+        <div><a class="link" href="./">Home</a></div>
+      </nav>
+      <main class="doc">
+        <h1>Privacy policy</h1>
+        <p class="muted">Last updated 15 October 2026.</p>
+        <p>ShieldChild is an open-source parental screen time and bedtime lockdown app designed with one fundamental principle: <b>your family's data belongs exclusively to you and never leaves your device.</b></p>
+        <p>ShieldChild requires no account, uses no cloud servers, serves zero advertisements, and includes no analytics or telemetry trackers whatsoever.</p>
+
+        <h2>What stays on the device</h2>
+        <ul>
+          <li><b>Screen time & app usage:</b> Monitored strictly in real time using Android's native <code>UsageStatsManager</code>. Daily usage totals and app quotas are computed on-device and reset at midnight.</li>
+          <li><b>Parent authentication credentials:</b> Your Master PIN and Offline Recovery Key are never stored in plaintext. They are cryptographically hashed using salted SHA-256 and stored in private app storage. Biometric authentication (fingerprint) is handled directly by Android's secure hardware enclave (BiometricPrompt API).</li>
+          <li><b>Curfew and app limit policies:</b> Daily time limits, bedtime schedules, individual app caps, and emergency contact numbers remain strictly in your device's local encrypted preferences.</li>
+          <li><b>Audit and unlock logs:</b> Unlock events, +15m bonus grants, and curfew override timestamps remain on the phone for parental review.</li>
+        </ul>
+        <p>Uninstalling the application from the phone completely erases all local data and preferences.</p>
+
+        <h2>Network and data transmission</h2>
+        <p>ShieldChild performs <b>zero background network uploads</b>. The app does not maintain any backend API, database, or analytics endpoint. It never transmits child device activity, app names, usage habits, or passwords over the internet.</p>
+
+        <h2>Android permissions explained</h2>
+        <ul>
+          <li><b>Usage Access (PACKAGE_USAGE_STATS):</b> Required to accurately measure daily screen time and detect when individual application limits have been exhausted.</li>
+          <li><b>Accessibility Service:</b> Required for sub-10ms anti-bypass enforcement, ensuring bedtime lockdown screens cannot be skipped via navigation gestures, and blocking unauthorized attempts to force stop or clear data in Android Settings.</li>
+          <li><b>Device Administrator (DevicePolicyManager):</b> Prevents unauthorized deletion of the app by children during daytime usage. Can be cleanly deactivated by the parent at any time inside the app's Security tab using their Master PIN or fingerprint.</li>
+          <li><b>System Overlay (SYSTEM_ALERT_WINDOW):</b> Used to render polite, non-intrusive warnings and the full-screen Curfew Lock screen when downtime is in effect.</li>
+          <li><b>Phone & SMS:</b> Used strictly for child safety: opening the native phone dialer for parent-configured Emergency SOS calls (e.g. 911 or parents) and dispatching "+15m bonus extension" request SMS messages through the phone's native messenger.</li>
+        </ul>
+
+        <h2>Children's privacy compliance</h2>
+        <p>Because ShieldChild collects zero personal information, requires no accounts, and transmits no data, it fully complies with COPPA (Children's Online Privacy Protection Act) and GDPR-K guidelines by design.</p>
+
+        <h2>Contact & source code</h2>
+        <p>ShieldChild is open-source. You can inspect the source code, verify every permission, or report an issue on GitHub:</p>
+        <p><a href="https://github.com/heyhadi/shieldchild">https://github.com/heyhadi/shieldchild</a></p>
+      </main>
+    </div>
+    <footer>
+      <div class="wrap footer-wrap">
+        <div>© 2026 ShieldChild. Open-source parental control. Zero tracking.</div>
+        <div class="footer-links">
+          <a href="./">Home</a>
+          <a href="https://github.com/heyhadi/shieldchild">GitHub</a>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

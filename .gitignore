@@ -1,0 +1,30 @@
+# Gradle and Android build files
+.gradle/
+.kotlin/
+build/
+app/build/
+*.apk
+*.aab
+local.properties
+.cxx/
+captures/
+
+# Node & TypeScript
+node_modules/
+coverage/
+*.tsbuildinfo
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# OS & IDE
+.DS_Store
+.idea/
+*.iml
+.vscode/
+
+# Temporary XML dumps and scratch scripts
+dump_*.xml
+window_dump.xml
+*.jks
+*.keystore
