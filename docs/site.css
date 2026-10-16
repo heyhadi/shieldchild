@@ -406,6 +406,7 @@ figcaption {
 }
 .steps h3 { font-size: 1.12rem; margin-bottom: 6px; }
 .steps p { margin: 0; color: var(--muted); font-size: 15px; }
+.steps p + p { margin-top: 8px; }
 
 /* Accordion FAQ */
 details {
