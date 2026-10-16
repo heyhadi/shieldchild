@@ -24,10 +24,12 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/dashboard-hero.jpg" width="720" alt="ShieldChild Parent Dashboard, Curfew Lockdown, and App Pause screens">
+  <img src="docs/images/dashboard-hero.png" width="260" alt="ShieldChild Parent Dashboard on OnePlus 6">&nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="docs/images/curfew-lock.png" width="260" alt="ShieldChild Curfew Lockdown on OnePlus 6">&nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="docs/images/app-limits.png" width="260" alt="ShieldChild Per-App Limits on OnePlus 6">
 </p>
 
-<p align="center"><sub>Live showcase of ShieldChild: Material You Parent Control Dashboard, Curfew Downtime Lock, and Single App Quota Shield.</sub></p>
+<p align="center"><sub>Authentic OnePlus 6 live device captures: Material You Parent Dashboard, Curfew Lockdown Screen, and Per-App Quota Controls.</sub></p>
 
 *ShieldChild* is an open-source parental screen time and bedtime lockdown guardian designed with zero-bypass architecture. It runs 100% on the child's device without requiring cloud accounts, remote servers, or monthly subscriptions.
 
@@ -68,10 +70,13 @@ Children are remarkably creative at bypassing conventional screen time apps. Shi
    - *ShieldChild's Armor:* `CurfewLockActivity` uses `launchMode="singleInstance"`, `excludeFromRecents="true"`, overrides `onUserLeaveHint()`, handles `onWindowFocusChanged()`, and closes system dialogs with `Intent.ACTION_CLOSE_SYSTEM_DIALOGS`.
 
 <p align="center">
-  <img src="docs/images/curfew-lock.jpg" width="280" alt="Curfew Lockdown">&nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="docs/images/ask-15m-dialog.png" width="280" alt="Ask for 15 More Mins Dialog">&nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="docs/images/security-tab.png" width="280" alt="Security Tab with Device Admin">
+  <img src="docs/images/curfew-settings.png" width="220" alt="Curfew Bedtime Settings">&nbsp;&nbsp;
+  <img src="docs/images/ask-15m-dialog.png" width="220" alt="Ask for 15 More Mins Dialog">&nbsp;&nbsp;
+  <img src="docs/images/security-tab.png" width="220" alt="Security Tab with Device Admin">&nbsp;&nbsp;
+  <img src="docs/images/anti-tamper-settings.png" width="220" alt="Anti-Uninstall Armor in OS Settings">
 </p>
+
+<p align="center"><sub>Live OnePlus 6 captures (left to right): Bedtime Curfew Schedule, +15m Bonus Approval Dialog, Parent Security Tab with Recovery Key, and Android OS App Info with Uninstall disabled.</sub></p>
 
 ## How it works
 
