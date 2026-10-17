@@ -127,6 +127,9 @@ class PreferencesRepository(
     }
 
     fun saveCurfewPolicy(policy: DeviceCurfewPolicy) {
+        if (policy.isInstantLocked) {
+            endParentSession()
+        }
         prefs.edit()
             .putBoolean(KEY_DAILY_LIMIT_ENABLED, policy.isDailyLimitEnabled)
             .putLong(KEY_DAILY_LIMIT, policy.dailyTotalLimitMinutes)
@@ -143,6 +146,9 @@ class PreferencesRepository(
     }
 
     fun setInstantLock(locked: Boolean) {
+        if (locked) {
+            endParentSession()
+        }
         prefs.edit().putBoolean(KEY_INSTANT_LOCKED, locked).apply()
     }
 

@@ -212,6 +212,8 @@ class ParentDashboardActivity : FragmentActivity() {
                                 startActivity(dialIntent)
                             },
                             onInstantLockActivated = {
+                                repo.endParentSession()
+                                isParentAuthenticatedState.value = false
                                 val intent = Intent(this, CurfewLockActivity::class.java).apply {
                                     putExtra(CurfewLockActivity.EXTRA_LOCK_REASON, LockReason.PARENT_INSTANT_FREEZE.name)
                                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -451,6 +453,10 @@ fun ReleaseParentDashboardScreen(
                         policy = repo.getCurfewPolicy()
                     },
                     onToggleInstantLock = { isLocked ->
+                        if (isLocked) {
+                            repo.endParentSession()
+                            ParentDashboardActivity.isParentAuthenticatedState.value = false
+                        }
                         repo.setInstantLock(isLocked)
                         policy = repo.getCurfewPolicy()
                         if (isLocked) {

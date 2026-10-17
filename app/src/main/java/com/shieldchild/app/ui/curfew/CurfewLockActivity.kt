@@ -82,6 +82,9 @@ class CurfewLockActivity : FragmentActivity() {
         } catch (_: Exception) {
             LockReason.TOTAL_SCREEN_TIME_EXCEEDED
         }
+        if (lockReason == LockReason.PARENT_INSTANT_FREEZE) {
+            ShieldApplication.instance.preferencesRepository.endParentSession()
+        }
 
         setContent {
             // Re-check the rules while shown: close once nothing should be locked (e.g. a
@@ -101,10 +104,16 @@ class CurfewLockActivity : FragmentActivity() {
                             break
                         }
                     } else {
+                        val currentPolicy = repo.getCurfewPolicy()
+                        val effectiveAccess = if (currentPolicy.isInstantLocked) {
+                            accessState.copy(isParentSession = false)
+                        } else {
+                            accessState
+                        }
                         val current = com.shieldchild.app.engine.CurfewLockLauncher.evaluateRebootLockReason(
-                            policy = repo.getCurfewPolicy(),
+                            policy = currentPolicy,
                             isDailyExceeded = repo.isDailyLimitExceededToday(),
-                            access = accessState
+                            access = effectiveAccess
                         )
                         if (current == null && authMethod == null) {
                             closeLock()
@@ -258,6 +267,9 @@ class CurfewLockActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (lockReason == LockReason.PARENT_INSTANT_FREEZE) {
+            ShieldApplication.instance.preferencesRepository.endParentSession()
+        }
         com.shieldchild.app.ui.dashboard.ParentDashboardActivity.isParentAuthenticatedState.value = false
         com.shieldchild.app.service.ShieldAccessibilityService.revokeParentUninstall()
     }

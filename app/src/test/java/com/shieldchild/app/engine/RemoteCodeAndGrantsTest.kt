@@ -163,4 +163,32 @@ class RemoteCodeAndGrantsTest {
         assertEquals(50_000L, uptime)
         assertEquals(12, boot)
     }
+
+    @Test
+    fun enablingInstantLockTerminatesActiveParentSession() {
+        AccessGrants.startParentSession(context, repo, GrantMethod.PIN)
+        assertTrue(repo.isParentSessionActive())
+        assertTrue(repo.getAccessState().isParentSession)
+
+        // Parent enables instant lock
+        repo.setInstantLock(true)
+
+        // Active parent session must be immediately terminated so lock takes hold
+        assertFalse(repo.isParentSessionActive())
+        assertFalse(repo.getAccessState().isParentSession)
+        assertTrue(repo.getCurfewPolicy().isInstantLocked)
+    }
+
+    @Test
+    fun savingPolicyWithInstantLockTerminatesActiveParentSession() {
+        AccessGrants.startParentSession(context, repo, GrantMethod.PIN)
+        assertTrue(repo.isParentSessionActive())
+
+        val currentPolicy = repo.getCurfewPolicy()
+        repo.saveCurfewPolicy(currentPolicy.copy(isInstantLocked = true))
+
+        assertFalse(repo.isParentSessionActive())
+        assertFalse(repo.getAccessState().isParentSession)
+        assertTrue(repo.getCurfewPolicy().isInstantLocked)
+    }
 }
