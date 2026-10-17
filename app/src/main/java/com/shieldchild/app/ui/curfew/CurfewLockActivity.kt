@@ -61,6 +61,8 @@ class CurfewLockActivity : FragmentActivity() {
 
     private lateinit var authManager: ParentAuthManager
     private lateinit var biometricHelper: BiometricAuthHelper
+    private var lockedPackage: String? = null
+    private var lockedAppName: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,6 +72,9 @@ class CurfewLockActivity : FragmentActivity() {
 
         setupLockWindowFlags()
         tryEnterLockTaskMode()
+
+        lockedPackage = intent.getStringExtra(EXTRA_LOCKED_PACKAGE)
+        lockedAppName = intent.getStringExtra(EXTRA_LOCKED_APP_NAME)
 
         val lockReasonStr = intent.getStringExtra(EXTRA_LOCK_REASON) ?: LockReason.TOTAL_SCREEN_TIME_EXCEEDED.name
         lockReason = try {
@@ -89,16 +94,27 @@ class CurfewLockActivity : FragmentActivity() {
                         break
                     }
                     val repo = ShieldApplication.instance.preferencesRepository
-                    val current = com.shieldchild.app.engine.CurfewLockLauncher.evaluateRebootLockReason(
-                        policy = repo.getCurfewPolicy(),
-                        isDailyExceeded = repo.isDailyLimitExceededToday(),
-                        access = repo.getAccessState()
-                    )
-                    if (current == null && authMethod == null) {
-                        closeLock()
-                        break
+                    val accessState = repo.getAccessState()
+                    if (lockedPackage != null) {
+                        if (accessState.isParentSession || lockedPackage in accessState.pausedApps) {
+                            closeLock()
+                            break
+                        }
+                    } else {
+                        val current = com.shieldchild.app.engine.CurfewLockLauncher.evaluateRebootLockReason(
+                            policy = repo.getCurfewPolicy(),
+                            isDailyExceeded = repo.isDailyLimitExceededToday(),
+                            access = accessState
+                        )
+                        if (current == null && authMethod == null) {
+                            closeLock()
+                            break
+                        }
+                        if (current != null) lockReason = current
                     }
-                    if (current != null) lockReason = current
+                    if (!hasWindowFocus() && shouldEnforceFront()) {
+                        bringToFront()
+                    }
                 }
             }
             ShieldChildTheme(darkTheme = true) {
@@ -133,7 +149,7 @@ class CurfewLockActivity : FragmentActivity() {
     private fun redeemRemoteCode(code: String, reason: LockReason): String? {
         return when (val result = remoteCodes.redeem(code)) {
             is RedeemResult.Success -> {
-                AccessGrants.grantMinutes(this, ShieldApplication.instance.preferencesRepository, result.minutes, reason, GrantMethod.REMOTE_CODE)
+                AccessGrants.grantMinutes(this, ShieldApplication.instance.preferencesRepository, result.minutes, reason, GrantMethod.REMOTE_CODE, lockedPackage = lockedPackage)
                 Toast.makeText(this, str(R.string.unlocked_by_parent_code_for, result.minutes), Toast.LENGTH_LONG).show()
                 closeLock()
                 null
@@ -180,10 +196,10 @@ class CurfewLockActivity : FragmentActivity() {
                 Toast.makeText(this, str(R.string.parent_access_locks_again_when), Toast.LENGTH_LONG).show()
             }
             is ParentChoice.ExtraMinutes -> {
-                AccessGrants.grantMinutes(this, repo, choice.minutes, reason, method)
+                AccessGrants.grantMinutes(this, repo, choice.minutes, reason, method, lockedPackage = lockedPackage)
                 Toast.makeText(this, str(R.string.min_given, choice.minutes), Toast.LENGTH_SHORT).show()
             }
-            ParentChoice.RestOfToday -> AccessGrants.grantRestOfToday(this, repo, reason, method)
+            ParentChoice.RestOfToday -> AccessGrants.grantRestOfToday(this, repo, reason, method, lockedPackage = lockedPackage)
             ParentChoice.InstantLockOff -> AccessGrants.turnOffInstantLock(this, repo, method)
         }
         authMethod = null
@@ -219,7 +235,6 @@ class CurfewLockActivity : FragmentActivity() {
     }
 
     private var isUnlocked = false
-    private var isLaunchingEmergency = false
 
     override fun onStart() {
         super.onStart()
@@ -244,14 +259,23 @@ class CurfewLockActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         com.shieldchild.app.ui.dashboard.ParentDashboardActivity.isParentAuthenticatedState.value = false
-        isLaunchingEmergency = false
+        com.shieldchild.app.service.ShieldAccessibilityService.revokeParentUninstall()
     }
 
     private fun shouldEnforceFront(): Boolean {
         return !isUnlocked &&
-                !isLaunchingEmergency &&
+                !PhoneGuard.isWithinCommunicationWindow() &&
                 !PhoneGuard.isInCall(this) &&
                 com.shieldchild.app.engine.ProfileGuard.isScreenInteractiveForProfile(this)
+    }
+
+    private fun bringToFront() {
+        val intent = Intent(this, CurfewLockActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        startActivity(intent)
     }
 
     override fun onUserLeaveHint() {
@@ -261,12 +285,7 @@ class CurfewLockActivity : FragmentActivity() {
             return
         }
         if (shouldEnforceFront()) {
-            val intent = Intent(this, CurfewLockActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP
-            }
-            startActivity(intent)
+            bringToFront()
         }
     }
 
@@ -291,12 +310,7 @@ class CurfewLockActivity : FragmentActivity() {
             return
         }
         if (!hasFocus && shouldEnforceFront()) {
-            val intent = Intent(this, CurfewLockActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP
-            }
-            startActivity(intent)
+            bringToFront()
         }
     }
 
@@ -307,7 +321,7 @@ class CurfewLockActivity : FragmentActivity() {
 
     /** Android's own emergency dialer: knows the local number (112/911/995…) and works without a SIM. */
     private fun launchEmergencyDialer() {
-        isLaunchingEmergency = true
+        PhoneGuard.allowExternalCommunicationWindow(30_000L)
         val emergency = Intent("com.android.phone.EmergencyDialer.DIAL").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             startActivity(emergency)
@@ -319,12 +333,12 @@ class CurfewLockActivity : FragmentActivity() {
     private fun callParent() {
         val number = ShieldApplication.instance.preferencesRepository.getCurfewPolicy().emergencyPhoneNumber
         if (number.isBlank()) return
-        isLaunchingEmergency = true
+        PhoneGuard.allowExternalCommunicationWindow(30_000L)
         startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$number")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     private fun launchExtensionSms() {
-        isLaunchingEmergency = true
+        PhoneGuard.allowExternalCommunicationWindow(30_000L)
         val repo = ShieldApplication.instance.preferencesRepository
         val policy = repo.getCurfewPolicy()
         val childName = repo.getChildName().ifEmpty { "Leo" }
@@ -343,6 +357,8 @@ class CurfewLockActivity : FragmentActivity() {
 
     companion object {
         const val EXTRA_LOCK_REASON = "extra_lock_reason"
+        const val EXTRA_LOCKED_PACKAGE = "extra_locked_package"
+        const val EXTRA_LOCKED_APP_NAME = "extra_locked_app_name"
 
         @Volatile
         var isShowing = false

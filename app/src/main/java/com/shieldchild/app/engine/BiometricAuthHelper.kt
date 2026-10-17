@@ -45,7 +45,15 @@ class BiometricAuthHelper(private val activity: FragmentActivity) {
     fun isHardwareReady(): Boolean = checkBiometricAvailability() is BiometricStatus.Available
 
     /** The parent turned fingerprint unlock on and the bound key is still present. */
-    fun isBiometricReady(): Boolean = isHardwareReady() && repo.isBiometricEnabled() && loadKey() != null
+    fun isBiometricReady(): Boolean {
+        val um = activity.getSystemService(android.content.Context.USER_SERVICE) as? android.os.UserManager
+        if (um?.isUserUnlocked == false) return false
+        return try {
+            isHardwareReady() && repo.isBiometricEnabled() && loadKey() != null
+        } catch (_: Throwable) {
+            false
+        }
+    }
 
     /** Creates a fresh key and asks for a fingerprint; turns fingerprint unlock on when it succeeds. */
     fun enable(onSuccess: () -> Unit, onError: (CharSequence) -> Unit) {

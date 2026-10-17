@@ -1,5 +1,6 @@
 package com.shieldchild.app.engine
 
+import android.content.Context
 import android.content.ContextWrapper
 import android.content.SharedPreferences
 import com.shieldchild.app.data.PreferencesRepository
@@ -8,7 +9,9 @@ open class TestContext : ContextWrapper(null)
 
 fun testRepo(store: FakePrefs = FakePrefs(), clock: () -> Long = { 1_000_000L }) =
     PreferencesRepository(object : ContextWrapper(null) {
+        override fun createDeviceProtectedStorageContext(): Context = this
         override fun getSharedPreferences(name: String?, mode: Int): SharedPreferences = store
+        override fun getSystemService(name: String): Any? = null
     }, clock)
 
 /** Minimal in-memory SharedPreferences for JVM tests. */

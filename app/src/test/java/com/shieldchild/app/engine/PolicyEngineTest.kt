@@ -107,4 +107,23 @@ class PolicyEngineTest {
         assertTrue(engine.evaluateLockState(policy, limits, usage, "youtube", weekdayNoon) is LockState.SingleAppLock)
         assertEquals(LockState.Unlocked, engine.evaluateLockState(policy, limits, usage, "maps", weekdayNoon))
     }
+
+    @Test
+    fun pausedAppSuppressesSingleAppLockUntilExpired() {
+        val limits = mapOf(
+            "youtube" to AppLimit("youtube", "YouTube", 30)
+        )
+        val usage = DailyUsageSummary(10, mapOf("youtube" to 35L))
+
+        // When not paused, YouTube is locked
+        assertTrue(engine.evaluateLockState(policy, limits, usage, "youtube", weekdayNoon) is LockState.SingleAppLock)
+
+        // When in pausedApps, YouTube is unlocked
+        val pausedAccess = AccessState(pausedApps = setOf("youtube"))
+        assertEquals(LockState.Unlocked, engine.evaluateLockState(policy, limits, usage, "youtube", weekdayNoon, pausedAccess))
+
+        // When pausedApps contains another app, YouTube remains locked
+        val otherPausedAccess = AccessState(pausedApps = setOf("tiktok"))
+        assertTrue(engine.evaluateLockState(policy, limits, usage, "youtube", weekdayNoon, otherPausedAccess) is LockState.SingleAppLock)
+    }
 }

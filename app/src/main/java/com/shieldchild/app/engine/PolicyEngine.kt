@@ -38,7 +38,7 @@ class PolicyEngine {
         }
 
         // Priority 4: Individual App Limit Exceeded
-        if (foregroundPackage != null && appLimits.containsKey(foregroundPackage)) {
+        if (foregroundPackage != null && foregroundPackage !in access.pausedApps && appLimits.containsKey(foregroundPackage)) {
             val limit = appLimits[foregroundPackage]!!
             val usedMinutes = usageSummary.perAppUsageMinutes[foregroundPackage] ?: 0L
 

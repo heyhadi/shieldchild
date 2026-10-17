@@ -38,10 +38,14 @@ object AccessGrants {
         minutes: Long,
         reason: LockReason,
         method: GrantMethod,
-        now: Long = System.currentTimeMillis()
+        now: Long = System.currentTimeMillis(),
+        lockedPackage: String? = null
     ) {
         val until = now + minutes * 60_000L
         applyGrant(repo, reason, until)
+        if (lockedPackage != null) {
+            repo.pauseAppLimitUntil(lockedPackage, until)
+        }
         if (reason == LockReason.TOTAL_SCREEN_TIME_EXCEEDED) repo.addBonusMinutes(minutes)
         repo.addGrantLog(method, GrantLog.minutes(minutes))
         recheck(context)
@@ -53,7 +57,8 @@ object AccessGrants {
         repo: PreferencesRepository,
         reason: LockReason,
         method: GrantMethod,
-        cal: Calendar = Calendar.getInstance()
+        cal: Calendar = Calendar.getInstance(),
+        lockedPackage: String? = null
     ) {
         val until = if (reason == LockReason.SCHEDULED_BEDTIME_CURFEW) {
             nextCurfewEnd(repo, cal)
@@ -64,6 +69,9 @@ object AccessGrants {
             }.timeInMillis
         }
         applyGrant(repo, reason, until)
+        if (lockedPackage != null) {
+            repo.pauseAppLimitUntil(lockedPackage, until)
+        }
         repo.addGrantLog(method, if (reason == LockReason.SCHEDULED_BEDTIME_CURFEW) GrantLog.BEDTIME_OFF else GrantLog.REST_OF_TODAY)
         recheck(context)
     }

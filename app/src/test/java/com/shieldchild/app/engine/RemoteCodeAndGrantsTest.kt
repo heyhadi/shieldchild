@@ -131,4 +131,36 @@ class RemoteCodeAndGrantsTest {
         assertEquals(3L, repo.getParentUsedMinutesToday())
         assertFalse(repo.hasParentSessionRecord())
     }
+
+    @Test
+    fun grantMinutesWithLockedPackagePausesAppLimit() {
+        val appPkg = "com.google.android.youtube"
+        val grantDuration = 20L
+        AccessGrants.grantMinutes(
+            context = context,
+            repo = repo,
+            minutes = grantDuration,
+            reason = LockReason.TOTAL_SCREEN_TIME_EXCEEDED,
+            method = GrantMethod.PIN,
+            now = now,
+            lockedPackage = appPkg
+        )
+
+        // YouTube should be in pausedApps
+        val access = repo.getAccessState(now)
+        assertTrue(access.pausedApps.contains(appPkg))
+
+        // Querying after expiration time should no longer include the app
+        val futurePaused = repo.getPausedApps(now + (grantDuration + 1) * 60_000L)
+        assertFalse(futurePaused.contains(appPkg))
+    }
+
+    @Test
+    fun clockAnchorPersistenceAndBootSession() {
+        repo.saveClockAnchor(1_700_000_000_000L, 50_000L, 12)
+        val (wall, uptime, boot) = repo.getClockAnchor()
+        assertEquals(1_700_000_000_000L, wall)
+        assertEquals(50_000L, uptime)
+        assertEquals(12, boot)
+    }
 }

@@ -25,4 +25,13 @@ class SettingsGuardTest {
         ShieldAccessibilityService.allowParentUninstall()
         assertFalse(ShieldAccessibilityService.shouldGuardSettings(isSetupCompleted = true))
     }
+
+    @Test
+    fun revokeParentUninstallImmediatelyRearmsProtection() {
+        ShieldAccessibilityService.allowParentUninstall()
+        assertFalse(ShieldAccessibilityService.shouldGuardSettings(isSetupCompleted = true))
+        ShieldAccessibilityService.revokeParentUninstall()
+        assertTrue(ShieldAccessibilityService.shouldGuardSettings(isSetupCompleted = true))
+        assertFalse(ShieldAccessibilityService.isParentUninstallActive())
+    }
 }

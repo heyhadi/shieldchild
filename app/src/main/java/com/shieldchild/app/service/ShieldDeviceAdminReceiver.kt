@@ -50,6 +50,10 @@ class ShieldDeviceAdminReceiver : DeviceAdminReceiver() {
                 // Prevent switching to Guest account
                 dpm.addUserRestriction(admin, UserManager.DISALLOW_ADD_USER)
                 dpm.addUserRestriction(admin, UserManager.DISALLOW_USER_SWITCH)
+                // Prevent enabling Developer Options / ADB debugging
+                dpm.addUserRestriction(admin, UserManager.DISALLOW_DEBUGGING_FEATURES)
+                // Prevent tampering with system date and time
+                dpm.addUserRestriction(admin, UserManager.DISALLOW_CONFIG_DATE_TIME)
 
                 // Configure LockTask (Kiosk) allowed packages
                 val kioskPackages = arrayOf(

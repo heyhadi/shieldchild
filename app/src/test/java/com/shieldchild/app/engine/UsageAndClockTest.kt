@@ -77,4 +77,16 @@ class UsageAndClockTest {
         // No baseline yet.
         assertFalse(ClockGuard.isSuspiciousJump(0L, 0L, wall, up, isAutomaticTime = false))
     }
+
+    @Test
+    fun creepingClockShiftsAgainstBootAnchorTriggerSuspiciousJump() {
+        val anchorWall = 1_700_000_000_000L
+        val anchorUptime = 5_000_000L
+
+        // Single 90s jump (under 120s threshold)
+        assertFalse(ClockGuard.isSuspiciousJump(anchorWall, anchorUptime, anchorWall + 5_000L - 90_000L, anchorUptime + 5_000L, isAutomaticTime = false))
+
+        // Cumulative 180s jump (over 120s threshold) against persistent anchor
+        assertTrue(ClockGuard.isSuspiciousJump(anchorWall, anchorUptime, anchorWall + 10_000L - 180_000L, anchorUptime + 10_000L, isAutomaticTime = false))
+    }
 }

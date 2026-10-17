@@ -2,10 +2,12 @@ package com.shieldchild.app.service
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
+import android.os.Build
 import android.view.accessibility.AccessibilityEvent
 import com.shieldchild.app.ShieldApplication
 import com.shieldchild.app.data.LockReason
 import com.shieldchild.app.engine.CurfewLockLauncher
+import com.shieldchild.app.ui.curfew.CurfewLockActivity
 
 class ShieldAccessibilityService : AccessibilityService() {
 
@@ -30,15 +32,30 @@ class ShieldAccessibilityService : AccessibilityService() {
         ) {
             val pkgName = event.packageName?.toString() ?: return
 
+            // 0. Notification shade collapse when CurfewLockActivity is showing (Task 8)
+            if (CurfewLockActivity.isShowing &&
+                pkgName == "com.android.systemui" &&
+                !com.shieldchild.app.engine.PhoneGuard.isInCall(this)
+            ) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    sendBroadcast(Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS))
+                }
+            }
+
             // 1. Instant curfew / limit lockdown enforcement on foreground package switch
             if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
                 checkAndEnforceCurfew(pkgName)
             }
 
-            // 2. 24/7 Anti-Uninstall & Anti-Tamper Protection (ACTIVE EVEN DURING ALLOWED USAGE TIME)
-            // Stays on during a parent session: a child handed the phone back unlocked
-            // must not get a window to switch protection off.
-            if (shouldGuardSettings(ShieldApplication.instance.preferencesRepository.isSetupCompleted())) {
+            // 2. 24/7 Anti-Uninstall & Anti-Tamper Protection (Task 3)
+            val repo = ShieldApplication.instance.preferencesRepository
+            if (shouldGuardSettings(repo.isSetupCompleted())) {
+                val isParentActive = repo.isParentSessionActive() ||
+                        com.shieldchild.app.ui.dashboard.ParentDashboardActivity.isParentAuthenticatedState.value
+
                 val isSettings = pkgName == "com.android.settings" || pkgName.contains(".settings")
                 val isInstallerOrStore = pkgName.contains("packageinstaller") ||
                         pkgName.contains("permissioncontroller") ||
@@ -46,31 +63,102 @@ class ShieldAccessibilityService : AccessibilityService() {
                         pkgName.contains("securitycenter") ||
                         pkgName == "com.android.vending"
 
+                // A. Always Guard ShieldChild Direct Tampering (Even in Parent Session unless allowParentUninstall is active)
                 if (isSettings || isInstallerOrStore) {
                     val root = rootInActiveWindow ?: event.source
                     if (root != null) {
                         val matchesShield = root.findAccessibilityNodeInfosByText("ShieldChild")
                         val matchesPkg = root.findAccessibilityNodeInfosByText("com.shieldchild.app")
                         if (!matchesShield.isNullOrEmpty() || !matchesPkg.isNullOrEmpty()) {
-                            // Child is attempting to:
-                            // - Uninstall ShieldChild via launcher drag or package installer
-                            // - Force Stop / Clear Cache / Storage in Settings
-                            // - Deactivate Device Admin
-                            // - Turn off Accessibility Service in Settings
-                            // Immediately deflect to Home and lock device behind Parent Passcode!
                             performGlobalAction(GLOBAL_ACTION_HOME)
                             CurfewLockLauncher.launch(this, LockReason.PARENT_INSTANT_FREEZE)
                             return
                         }
                     }
                 }
+
+                // B. Guard High-Risk System Settings ONLY When Parent Is NOT Active
+                if (!isParentActive && isSettings) {
+                    val cls = event.className?.toString().orEmpty()
+                    val highRiskClasses = listOf(
+                        "DevelopmentSettings", "WirelessDebugging", "DateTimeSettings",
+                        "UserSettings", "DeviceAdminAdd", "DeviceAdminSettings",
+                        "AccessibilitySettings", "UsageAccessDetails", "DrawOverlayDetails",
+                        "AppInfoDashboard", "SpaActivity"
+                    )
+                    val classMatch = highRiskClasses.any { cls.contains(it, ignoreCase = true) }
+                    if (classMatch) {
+                        performGlobalAction(GLOBAL_ACTION_HOME)
+                        CurfewLockLauncher.launch(this, LockReason.PARENT_INSTANT_FREEZE)
+                        return
+                    }
+
+                    val root = rootInActiveWindow ?: event.source
+                    if (root != null) {
+                        val highRiskTexts = listOf(
+                            "Developer options", "Opsi pengembang",
+                            "USB debugging", "Wireless debugging",
+                            "Multiple users", "Banyak pengguna",
+                            "Device admin apps", "Aplikasi admin perangkat"
+                        )
+                        val textMatch = highRiskTexts.any {
+                            !root.findAccessibilityNodeInfosByText(it).isNullOrEmpty()
+                        }
+                        if (textMatch) {
+                            performGlobalAction(GLOBAL_ACTION_HOME)
+                            CurfewLockLauncher.launch(this, LockReason.PARENT_INSTANT_FREEZE)
+                            return
+                        }
+                    }
+                }
+
+                // C. Guard Home Launcher Long-Press Popup ONLY on Resolved Launcher Packages
+                val homeLaunchers = getHomeLauncherPackages()
+                if (!isParentActive && pkgName in homeLaunchers) {
+                    val root = rootInActiveWindow ?: event.source
+                    if (root != null) {
+                        val matchesShield = !root.findAccessibilityNodeInfosByText("ShieldChild").isNullOrEmpty()
+                        if (matchesShield) {
+                            val popupDangerTexts = listOf(
+                                "App info", "Info aplikasi", "Uninstall", "Hapus", "Copot pemasangan"
+                            )
+                            val hasDangerText = popupDangerTexts.any {
+                                !root.findAccessibilityNodeInfosByText(it).isNullOrEmpty()
+                            }
+                            if (hasDangerText) {
+                                performGlobalAction(GLOBAL_ACTION_HOME)
+                                return
+                            }
+                        }
+                    }
+                }
             }
 
-            // 3. Notify monitoring service of real-time package switch
+            // 3. Notify monitoring service of real-time package switch and PiP / Multi-window detection (Task 8)
             if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                var reportedPackage = pkgName
+                val homeLaunchers = getHomeLauncherPackages()
+                if (pkgName in homeLaunchers && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    try {
+                        val activeWindows = windows
+                        if (activeWindows != null) {
+                            val appLimits = repo.getAppLimits()
+                            for (win in activeWindows) {
+                                if (win.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION) {
+                                    val winPkg = win.root?.packageName?.toString()
+                                    if (winPkg != null && winPkg != pkgName && appLimits.containsKey(winPkg)) {
+                                        reportedPackage = winPkg
+                                        break
+                                    }
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+
                 val intent = Intent(this, ShieldMonitorService::class.java).apply {
                     action = ShieldMonitorService.ACTION_FOREGROUND_PACKAGE_CHANGED
-                    putExtra(ShieldMonitorService.EXTRA_PACKAGE_NAME, pkgName)
+                    putExtra(ShieldMonitorService.EXTRA_PACKAGE_NAME, reportedPackage)
                 }
                 try {
                     startService(intent)
@@ -101,6 +189,16 @@ class ShieldAccessibilityService : AccessibilityService() {
             if (foregroundPkg != packageName && foregroundPkg != "com.shieldchild.app.ui.curfew.CurfewLockActivity") {
                 CurfewLockLauncher.launch(this, reason)
             }
+        }
+    }
+
+    private fun getHomeLauncherPackages(): Set<String> {
+        return try {
+            val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+            val resolveInfos = packageManager.queryIntentActivities(intent, 0)
+            resolveInfos.mapNotNull { it.activityInfo?.packageName }.toSet()
+        } catch (_: Exception) {
+            emptySet()
         }
     }
 

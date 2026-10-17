@@ -70,7 +70,11 @@ class RemoteCodeManager(
     private val auth: ParentAuthManager,
     private val cipher: SecretCipher = KeystoreSecretCipher()
 ) {
-    fun isSetUp(): Boolean = repo.getRemoteSecretEncrypted() != null
+    fun isSetUp(): Boolean = try {
+        repo.getRemoteSecretEncrypted() != null
+    } catch (_: Throwable) {
+        false
+    }
 
     /** New secret for setup. Nothing is saved until [confirmSetup] succeeds. */
     fun newSecret(): ByteArray = ByteArray(20).also { SecureRandom().nextBytes(it) }
@@ -97,7 +101,7 @@ class RemoteCodeManager(
 
         val secret = try {
             cipher.decrypt(stored)
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             return RedeemResult.NotSetUp
         }
         val step = Totp.verify(secret, code.trim(), now, repo.getRemoteLastStep())

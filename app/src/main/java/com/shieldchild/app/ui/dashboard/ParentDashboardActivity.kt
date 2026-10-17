@@ -109,7 +109,15 @@ class ParentDashboardActivity : FragmentActivity() {
     override fun onStop() {
         super.onStop()
         // A restart for a language switch isn't the parent leaving.
-        if (!isChangingConfigurations) isParentAuthenticatedState.value = false
+        if (!isChangingConfigurations) {
+            isParentAuthenticatedState.value = false
+            val repo = ShieldApplication.instance.preferencesRepository
+            val isSetupCompleted = repo.isSetupCompleted()
+            val uninstallActiveRecently = ShieldAccessibilityService.isParentUninstallActive()
+            if (isSetupCompleted || !uninstallActiveRecently) {
+                ShieldAccessibilityService.revokeParentUninstall()
+            }
+        }
     }
 
     companion object {

@@ -75,7 +75,8 @@ enum class LockReason {
 data class AccessState(
     val isBedtimePaused: Boolean = false,
     val isLimitPaused: Boolean = false,
-    val isParentSession: Boolean = false
+    val isParentSession: Boolean = false,
+    val pausedApps: Set<String> = emptySet()
 )
 
 enum class GrantMethod(@androidx.annotation.StringRes val labelRes: Int) {

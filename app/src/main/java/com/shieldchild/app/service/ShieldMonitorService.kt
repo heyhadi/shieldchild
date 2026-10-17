@@ -101,11 +101,12 @@ class ShieldMonitorService : Service() {
     /** Handing the phone back usually means pressing power: end a parent session then. */
     private val screenOffReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            ShieldAccessibilityService.revokeParentUninstall()
             if (!com.shieldchild.app.engine.ProfileGuard.isCurrentProfileActive(this@ShieldMonitorService)) return
             if (!preferencesRepository.hasParentSessionRecord()) return
             // The screen also goes off at the ear during a call; keep the parent's session.
             val audio = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            val inCall = audio?.mode == AudioManager.MODE_IN_CALL || audio?.mode == AudioManager.MODE_IN_COMMUNICATION
+            val inCall = audio?.mode == AudioManager.MODE_IN_CALL
             if (inCall) return
             preferencesRepository.endParentSession()
             // Do NOT call evaluateCurrentState() while screen is off; screenOnReceiver evaluates on wake.
@@ -128,17 +129,31 @@ class ShieldMonitorService : Service() {
                 val resolver = contentResolver
                 val autoTime = android.provider.Settings.Global.getInt(resolver, android.provider.Settings.Global.AUTO_TIME, 1) == 1
                 val autoZone = android.provider.Settings.Global.getInt(resolver, android.provider.Settings.Global.AUTO_TIME_ZONE, 1) == 1
-                val tampered = when (intent.action) {
-                    Intent.ACTION_TIMEZONE_CHANGED -> !autoZone
-                    else -> com.shieldchild.app.engine.ClockGuard.isSuspiciousJump(
-                        lastWallMs, lastUptimeMs, System.currentTimeMillis(), android.os.SystemClock.elapsedRealtime(), autoTime
-                    )
-                }
                 val parentIsHere = preferencesRepository.isParentSessionActive() ||
                         com.shieldchild.app.ui.dashboard.ParentDashboardActivity.isParentAuthenticatedState.value
+
+                val (anchorWallMs, anchorUptimeMs, anchorBoot) = preferencesRepository.getClockAnchor()
+                val nowWallMs = System.currentTimeMillis()
+                val nowUptimeMs = android.os.SystemClock.elapsedRealtime()
+                val currentBoot = preferencesRepository.getBootCount()
+
+                val tampered = when (intent.action) {
+                    Intent.ACTION_TIMEZONE_CHANGED -> !autoZone
+                    else -> {
+                        if (currentBoot == anchorBoot && anchorWallMs != 0L) {
+                            com.shieldchild.app.engine.ClockGuard.isSuspiciousJump(
+                                anchorWallMs, anchorUptimeMs, nowWallMs, nowUptimeMs, autoTime
+                            )
+                        } else {
+                            false
+                        }
+                    }
+                }
                 if (tampered && !parentIsHere && preferencesRepository.isSetupCompleted()) {
                     preferencesRepository.setInstantLock(true)
                     preferencesRepository.addGrantLog(com.shieldchild.app.data.GrantMethod.SYSTEM, com.shieldchild.app.data.GrantLog.CLOCK_CHANGED)
+                } else if (parentIsHere || (autoTime && autoZone) || currentBoot != anchorBoot || anchorWallMs == 0L) {
+                    preferencesRepository.saveClockAnchor(nowWallMs, nowUptimeMs, currentBoot)
                 }
                 evaluateCurrentState()
             }
@@ -158,6 +173,7 @@ class ShieldMonitorService : Service() {
                 serviceScope.launch { evaluateCurrentState() }
             }
             ACTION_END_PARENT_SESSION -> {
+                ShieldAccessibilityService.revokeParentUninstall()
                 preferencesRepository.endParentSession()
                 serviceScope.launch { evaluateCurrentState() }
             }
@@ -185,8 +201,39 @@ class ShieldMonitorService : Service() {
             }
             return
         }
-        lastWallMs = System.currentTimeMillis()
-        lastUptimeMs = android.os.SystemClock.elapsedRealtime()
+        val nowWallMs = System.currentTimeMillis()
+        val nowUptimeMs = android.os.SystemClock.elapsedRealtime()
+        val currentBoot = preferencesRepository.getBootCount()
+        val (anchorWallMs, anchorUptimeMs, anchorBoot) = preferencesRepository.getClockAnchor()
+
+        val resolver = contentResolver
+        val autoTime = try {
+            android.provider.Settings.Global.getInt(resolver, android.provider.Settings.Global.AUTO_TIME, 1) == 1
+        } catch (_: Exception) { true }
+        val autoZone = try {
+            android.provider.Settings.Global.getInt(resolver, android.provider.Settings.Global.AUTO_TIME_ZONE, 1) == 1
+        } catch (_: Exception) { true }
+
+        val parentIsHere = preferencesRepository.isParentSessionActive() ||
+                com.shieldchild.app.ui.dashboard.ParentDashboardActivity.isParentAuthenticatedState.value
+
+        if (currentBoot != anchorBoot || anchorWallMs == 0L) {
+            preferencesRepository.saveClockAnchor(nowWallMs, nowUptimeMs, currentBoot)
+        } else if (parentIsHere || (autoTime && autoZone)) {
+            preferencesRepository.saveClockAnchor(nowWallMs, nowUptimeMs, currentBoot)
+        } else if (!autoTime && preferencesRepository.isSetupCompleted()) {
+            if (com.shieldchild.app.engine.ClockGuard.isSuspiciousJump(
+                    anchorWallMs, anchorUptimeMs, nowWallMs, nowUptimeMs, autoTime
+                )
+            ) {
+                preferencesRepository.setInstantLock(true)
+                preferencesRepository.addGrantLog(
+                    com.shieldchild.app.data.GrantMethod.SYSTEM,
+                    com.shieldchild.app.data.GrantLog.CLOCK_CHANGED
+                )
+            }
+        }
+
         // Idle or 30-minute limit reached: close the session so its time is excluded and the lock returns.
         if (preferencesRepository.hasParentSessionRecord() && !preferencesRepository.isParentSessionActive()) {
             preferencesRepository.endParentSession()

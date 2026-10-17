@@ -19,8 +19,27 @@ class PreferencesRepository(
 
     private val appContext: Context = context
 
+    private val storageContext: Context = run {
+        try {
+            val dpContext = context.createDeviceProtectedStorageContext()
+            if (dpContext != null) {
+                val um = context.getSystemService(Context.USER_SERVICE) as? android.os.UserManager
+                if (um?.isUserUnlocked == true) {
+                    try {
+                        dpContext.moveSharedPreferencesFrom(context, PREFS_NAME)
+                    } catch (_: Exception) {}
+                }
+                dpContext
+            } else {
+                context
+            }
+        } catch (_: Throwable) {
+            context
+        }
+    }
+
     private val prefs: SharedPreferences =
-        context.getSharedPreferences("shield_child_secure_prefs", Context.MODE_PRIVATE)
+        storageContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     init {
         removeLegacySharedRecoveryKey()
@@ -133,12 +152,12 @@ class PreferencesRepository(
     }
 
     // --- Parent grants & parent session ---
-    fun getAccessState(): AccessState {
-        val now = System.currentTimeMillis()
+    fun getAccessState(now: Long = System.currentTimeMillis()): AccessState {
         return AccessState(
             isBedtimePaused = now < prefs.getLong(KEY_BEDTIME_PAUSED_UNTIL, 0L),
             isLimitPaused = now < prefs.getLong(KEY_LIMIT_PAUSED_UNTIL, 0L),
-            isParentSession = isParentSessionActive()
+            isParentSession = isParentSessionActive(),
+            pausedApps = getPausedApps(now)
         )
     }
 
@@ -152,6 +171,49 @@ class PreferencesRepository(
     fun pauseLimitUntil(timestamp: Long) {
         prefs.edit().putLong(KEY_LIMIT_PAUSED_UNTIL, timestamp).apply()
     }
+
+    fun pauseAppLimitUntil(packageName: String, timestamp: Long) {
+        val currentJson = prefs.getString(KEY_PAUSED_APPS_JSON, null)
+        val jsonObject = if (currentJson != null) {
+            try { JSONObject(currentJson) } catch (_: Exception) { JSONObject() }
+        } else {
+            JSONObject()
+        }
+        jsonObject.put(packageName, timestamp)
+        prefs.edit().putString(KEY_PAUSED_APPS_JSON, jsonObject.toString()).apply()
+    }
+
+    fun getPausedApps(now: Long = System.currentTimeMillis()): Set<String> {
+        val currentJson = prefs.getString(KEY_PAUSED_APPS_JSON, null) ?: return emptySet()
+        val jsonObject = try { JSONObject(currentJson) } catch (_: Exception) { return emptySet() }
+        val paused = mutableSetOf<String>()
+        val keys = jsonObject.keys()
+        while (keys.hasNext()) {
+            val pkg = keys.next()
+            val until = jsonObject.optLong(pkg, 0L)
+            if (now < until) {
+                paused.add(pkg)
+            }
+        }
+        return paused
+    }
+
+    fun getClockAnchor(): Triple<Long, Long, Int> {
+        val wall = prefs.getLong(KEY_CLOCK_ANCHOR_WALL, 0L)
+        val uptime = prefs.getLong(KEY_CLOCK_ANCHOR_UPTIME, 0L)
+        val boot = prefs.getInt(KEY_CLOCK_ANCHOR_BOOT, -1)
+        return Triple(wall, uptime, boot)
+    }
+
+    fun saveClockAnchor(wallMs: Long, uptimeMs: Long, bootCount: Int) {
+        prefs.edit()
+            .putLong(KEY_CLOCK_ANCHOR_WALL, wallMs)
+            .putLong(KEY_CLOCK_ANCHOR_UPTIME, uptimeMs)
+            .putInt(KEY_CLOCK_ANCHOR_BOOT, bootCount)
+            .apply()
+    }
+
+    fun getBootCount(): Int = bootCount()
 
     /**
      * Parent sessions are timed with elapsedRealtime plus the boot count, so changing the
@@ -216,8 +278,7 @@ class PreferencesRepository(
 
     private fun isInCall(): Boolean {
         val audio = appContext.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager ?: return false
-        return audio.mode == android.media.AudioManager.MODE_IN_CALL ||
-                audio.mode == android.media.AudioManager.MODE_IN_COMMUNICATION
+        return audio.mode == android.media.AudioManager.MODE_IN_CALL
     }
 
     private fun bootCount(): Int = try {
@@ -364,6 +425,7 @@ class PreferencesRepository(
                 .putLong(KEY_BONUS_MINUTES, 0L)
                 .putString(KEY_DAILY_LIMIT_EXCEEDED_DAY, "")
                 .putLong(KEY_PARENT_EXCLUDED_MS, 0L)
+                .remove(KEY_PAUSED_APPS_JSON)
                 .apply()
         }
     }
@@ -383,6 +445,11 @@ class PreferencesRepository(
     }
 
     companion object {
+        private const val PREFS_NAME = "shield_child_secure_prefs"
+        private const val KEY_PAUSED_APPS_JSON = "key_paused_apps_json"
+        private const val KEY_CLOCK_ANCHOR_WALL = "key_clock_anchor_wall"
+        private const val KEY_CLOCK_ANCHOR_UPTIME = "key_clock_anchor_uptime"
+        private const val KEY_CLOCK_ANCHOR_BOOT = "key_clock_anchor_boot"
         private const val KEY_RECOVERY_KEY_RAW = "key_recovery_key_raw" // legacy, removed on load
         private const val KEY_RECOVERY_KEY_SALT = "key_recovery_key_salt"
         private const val KEY_PIN_HASH = "key_pin_hash"

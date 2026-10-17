@@ -46,8 +46,7 @@ class AppShieldOverlayManager(private val context: Context) {
                 @Suppress("DEPRECATION")
                 WindowManager.LayoutParams.TYPE_PHONE
             },
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                     WindowManager.LayoutParams.FLAG_FULLSCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
@@ -79,10 +78,26 @@ class AppShieldOverlayManager(private val context: Context) {
         limitMinutes: Long,
         usedMinutes: Long
     ): View {
-        val root = android.widget.FrameLayout(context).apply {
+        val root = object : android.widget.FrameLayout(context) {
+            override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+                if (event.keyCode == android.view.KeyEvent.KEYCODE_BACK) {
+                    if (event.action == android.view.KeyEvent.ACTION_UP) {
+                        dismiss()
+                        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                            addCategory(Intent.CATEGORY_HOME)
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        context.startActivity(homeIntent)
+                    }
+                    return true
+                }
+                return super.dispatchKeyEvent(event)
+            }
+        }.apply {
             setBackgroundColor(android.graphics.Color.parseColor("#F50F1411")) // DarkShieldColors.canvas at 96%, same as the lock screen
             isClickable = true
             isFocusable = true
+            isFocusableInTouchMode = true
         }
 
         val container = android.widget.LinearLayout(context).apply {
@@ -136,8 +151,11 @@ class AppShieldOverlayManager(private val context: Context) {
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             isAllCaps = false
             setOnClickListener {
+                dismiss()
                 val curfewIntent = Intent(context, CurfewLockActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    putExtra(CurfewLockActivity.EXTRA_LOCKED_PACKAGE, packageName)
+                    putExtra(CurfewLockActivity.EXTRA_LOCKED_APP_NAME, appName)
                 }
                 context.startActivity(curfewIntent)
             }
