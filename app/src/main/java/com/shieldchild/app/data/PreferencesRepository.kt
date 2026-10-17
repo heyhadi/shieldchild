@@ -368,6 +368,20 @@ class PreferencesRepository(
         }
     }
 
+    // --- Update Checking & Banner Preferences ---
+    fun getLastUpdateCheckTime(): Long = prefs.getLong(KEY_LAST_UPDATE_CHECK_TIME, 0L)
+    fun setLastUpdateCheckTime(time: Long) {
+        prefs.edit().putLong(KEY_LAST_UPDATE_CHECK_TIME, time).apply()
+    }
+
+    fun isUpdateBannerDismissedForBuild(build: Long): Boolean {
+        return prefs.getLong(KEY_DISMISSED_UPDATE_BUILD, -1L) == build
+    }
+
+    fun dismissUpdateBannerForBuild(build: Long) {
+        prefs.edit().putLong(KEY_DISMISSED_UPDATE_BUILD, build).apply()
+    }
+
     companion object {
         private const val KEY_RECOVERY_KEY_RAW = "key_recovery_key_raw" // legacy, removed on load
         private const val KEY_RECOVERY_KEY_SALT = "key_recovery_key_salt"
@@ -409,6 +423,8 @@ class PreferencesRepository(
         private const val KEY_REMOTE_MINUTES = "key_remote_minutes"
         private const val KEY_REMOTE_COUNT = "key_remote_count"
         private const val KEY_REMOTE_COUNT_DAY = "key_remote_count_day"
+        private const val KEY_LAST_UPDATE_CHECK_TIME = "key_last_update_check_time"
+        private const val KEY_DISMISSED_UPDATE_BUILD = "key_dismissed_update_build"
         private const val MAX_GRANT_LOG = 50
 
         // Hard end even if someone keeps touching: a child handed the phone gets at most this.

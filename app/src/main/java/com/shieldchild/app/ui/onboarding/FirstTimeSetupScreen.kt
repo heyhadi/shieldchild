@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Security
@@ -37,9 +38,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -71,7 +75,8 @@ fun FirstTimeSetupScreen(
     val context = LocalContext.current
     val repo = ShieldApplication.instance.preferencesRepository
 
-    var currentStep by remember { mutableStateOf(1) } // 1: Child Details, 2: Parent Security, 3: Permissions
+    var currentStep by remember { mutableStateOf(1) } // 1: Child Details, 2: Parent Security, 3: Permissions, 4: Protection Active
+    var generatedRecoveryKey by remember { mutableStateOf<String?>(null) }
 
     // --- Step 1 State: Child Details ---
     var childName by remember { mutableStateOf(repo.getChildName().ifEmpty { "Leo" }) }
@@ -167,7 +172,8 @@ fun FirstTimeSetupScreen(
                             text = when (currentStep) {
                                 1 -> str(R.string.step_1_of_3_child)
                                 2 -> str(R.string.step_2_of_3_parent)
-                                else -> str(R.string.step_3_of_3_protection)
+                                3 -> str(R.string.step_3_of_3_protection)
+                                else -> str(R.string.step_4_of_4)
                             },
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.SemiBold,
@@ -176,12 +182,12 @@ fun FirstTimeSetupScreen(
                     }
                 }
 
-                // 3 Progress Dots / Pills
+                // 4 Progress Dots / Pills
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    for (step in 1..3) {
+                    for (step in 1..4) {
                         val isActive = step == currentStep
                         val isDone = step < currentStep
                         Box(
@@ -347,6 +353,17 @@ fun FirstTimeSetupScreen(
                         colInkMuted = colInkMuted,
                         colLineSubtle = colLineSubtle
                     )
+                    else -> Step4ProtectionActive(
+                        childName = childName,
+                        dailyLimitMinutes = dailyLimitMinutes,
+                        recoveryKey = generatedRecoveryKey ?: "",
+                        colPrimary = colPrimary,
+                        colPrimaryContainer = colPrimaryContainer,
+                        colOnPrimaryContainer = colOnPrimaryContainer,
+                        colInk = colInk,
+                        colInkMuted = colInkMuted,
+                        colLineSubtle = colLineSubtle
+                    )
                 }
             }
 
@@ -359,7 +376,7 @@ fun FirstTimeSetupScreen(
                     .padding(bottom = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                if (currentStep > 1) {
+                if (currentStep in 2..3) {
                     Button(
                         onClick = { currentStep-- },
                         shape = RoundedCornerShape(24.dp),
@@ -401,7 +418,7 @@ fun FirstTimeSetupScreen(
                                 }
                             }
                             3 -> {
-                                // Finalize Onboarding
+                                // Finalize Onboarding & Save
                                 repo.saveChildName(childName.trim())
                                 authManager.setMasterPin(pin)
 
@@ -413,6 +430,9 @@ fun FirstTimeSetupScreen(
                                 repo.saveCurfewPolicy(updatedPolicy)
                                 repo.setSetupCompleted(true)
 
+                                // Generate Master Recovery Key now so it is safely held in Keystore/PBKDF2
+                                generatedRecoveryKey = authManager.generateRecoveryKey()
+
                                 // Start monitor service
                                 try {
                                     val serviceIntent = Intent(context, ShieldMonitorService::class.java)
@@ -423,7 +443,10 @@ fun FirstTimeSetupScreen(
                                     }
                                 } catch (_: Exception) {}
 
-                                Toast.makeText(context, str(R.string.protection_activated_for, childName.trim()), Toast.LENGTH_SHORT).show()
+                                currentStep = 4
+                            }
+                            else -> {
+                                // Step 4: Parent noted recovery key and taps "Go to Dashboard Overview"
                                 onSetupFinished()
                             }
                         }
@@ -434,11 +457,15 @@ fun FirstTimeSetupScreen(
                         contentColor = Shield.colors.onPrimary
                     ),
                     modifier = Modifier
-                        .weight(if (currentStep > 1) 1.5f else 1f)
+                        .weight(if (currentStep in 2..3) 1.5f else 1f)
                         .height(52.dp)
                 ) {
                     Text(
-                        text = if (currentStep == 3) str(R.string.start_protecting) else str(R.string.action_continue),
+                        text = when (currentStep) {
+                            4 -> str(R.string.btn_go_to_dashboard)
+                            3 -> str(R.string.start_protecting)
+                            else -> str(R.string.action_continue)
+                        },
                         fontSize = 15.5.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -1401,3 +1428,236 @@ private fun hasNotificationPermission(context: Context): Boolean {
         true
     }
 }
+
+@Composable
+private fun Step4ProtectionActive(
+    childName: String,
+    dailyLimitMinutes: Long,
+    recoveryKey: String,
+    colPrimary: Color,
+    colPrimaryContainer: Color,
+    colOnPrimaryContainer: Color,
+    colInk: Color,
+    colInkMuted: Color,
+    colLineSubtle: Color
+) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    var isCopied by remember { mutableStateOf(false) }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(top = 10.dp, bottom = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        item {
+            Spacer(modifier = Modifier.height(10.dp))
+            // Shield celebration badge
+            Surface(
+                shape = CircleShape,
+                color = colPrimaryContainer,
+                border = BorderStroke(2.dp, colPrimary.copy(alpha = 0.6f)),
+                modifier = Modifier.size(76.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Shield,
+                        contentDescription = null,
+                        tint = colPrimary,
+                        modifier = Modifier.size(42.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Text(
+                text = str(R.string.protection_is_now_active),
+                fontSize = 21.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = colInk,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = str(R.string.protection_active_desc, childName.trim()),
+                fontSize = 14.sp,
+                color = colInkMuted,
+                textAlign = TextAlign.Center,
+                lineHeight = 20.sp,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
+        }
+
+        item {
+            // Master Recovery Key Box
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Shield.colors.card,
+                border = BorderStroke(1.dp, colLineSubtle),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Key,
+                                contentDescription = null,
+                                tint = colPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = str(R.string.your_master_recovery_key),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colInk
+                            )
+                        }
+
+                        TextButton(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(recoveryKey))
+                                isCopied = true
+                                Toast.makeText(context, str(R.string.key_copied_to_clipboard), Toast.LENGTH_SHORT).show()
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            if (isCopied) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = colPrimary,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
+                            Text(
+                                text = str(R.string.copy_key),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colPrimary
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Monospace Key Text Container
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Shield.colors.surfaceVariant,
+                        border = BorderStroke(1.dp, colPrimary.copy(alpha = 0.3f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = recoveryKey,
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontFamily = FontFamily.Monospace,
+                            letterSpacing = 2.sp,
+                            color = colInk,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 14.dp, horizontal = 8.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = str(R.string.recovery_key_warning),
+                        fontSize = 12.sp,
+                        color = colInkMuted,
+                        lineHeight = 16.5.sp
+                    )
+                }
+            }
+        }
+
+        item {
+            // Summary Info Row
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Shield.colors.surfaceVariant,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = str(R.string.daily_allowance),
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colInkMuted
+                        )
+                        Text(
+                            text = "${dailyLimitMinutes / 60}h ${dailyLimitMinutes % 60}m",
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colInk
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .height(24.dp)
+                            .width(1.dp)
+                            .background(colLineSubtle)
+                    )
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = str(R.string.curfew),
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colInkMuted
+                        )
+                        Text(
+                            text = "8:00 PM – 7:00 AM",
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colInk
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .height(24.dp)
+                            .width(1.dp)
+                            .background(colLineSubtle)
+                    )
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = str(R.string.method_pin),
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colInkMuted
+                        )
+                        Text(
+                            text = "••••",
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colPrimary
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+

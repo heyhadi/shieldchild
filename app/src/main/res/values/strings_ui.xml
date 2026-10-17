@@ -385,4 +385,22 @@
     <string name="restricted_setting_title">Switch greyed out? &quot;Restricted setting&quot;</string>
     <string name="restricted_setting_steps">Android blocks this for apps not installed from the Play Store. Tap Open App info, then ⋮ (top right) → Allow restricted settings, then come back and tap Grant. No ⋮ option? Tap Grant once first, then try again.</string>
     <string name="open_app_info">Open App info</string>
+
+    <!-- Setup Step 4 & Overview Redirection -->
+    <string name="step_4_of_4">Step 4 of 4 · Protection Active</string>
+    <string name="protection_is_now_active">Protection is Now Active!</string>
+    <string name="protection_active_desc">%1$s\'s phone is now protected with your scheduled curfew and daily limits.</string>
+    <string name="your_master_recovery_key">Your Master Recovery Key</string>
+    <string name="recovery_key_warning">Save this key now. It is the only way to reset your PIN if you forget it. It is stored offline on this device.</string>
+    <string name="btn_go_to_dashboard">Go to Dashboard Overview</string>
+    <string name="key_copied_to_clipboard">Recovery key copied to clipboard</string>
+    <string name="copy_key">Copy</string>
+
+    <!-- Overview In-App GitHub Update Banner -->
+    <string name="update_banner_title">New update available</string>
+    <string name="update_banner_desc">%1$s is ready to install with latest improvements.</string>
+    <string name="update_banner_btn_update">Update Now</string>
+    <string name="update_banner_btn_later">Later</string>
+    <string name="update_banner_downloading">Downloading update… %1$s%%</string>
+    <string name="update_banner_downloading_indeterminate">Downloading update…</string>
 </resources>

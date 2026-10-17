@@ -58,6 +58,10 @@ import com.shieldchild.app.ui.onboarding.FirstTimeSetupScreen
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.FragmentActivity
+import com.shieldchild.app.update.UpdateManager
+import com.shieldchild.app.update.AvailableUpdate
+import com.shieldchild.app.update.InstallResult
+import com.shieldchild.app.ui.dashboard.components.UpdateBanner
 import com.shieldchild.app.ShieldApplication
 import com.shieldchild.app.data.AppLimit
 import com.shieldchild.app.data.DeviceCurfewPolicy
@@ -511,6 +515,34 @@ fun ReleaseOverviewScreen(
     val colInkMuted = Shield.colors.inkMuted
     val colLineSubtle = Shield.colors.line
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val repo = remember { ShieldApplication.instance.preferencesRepository }
+    val updateManager = remember { UpdateManager(context) }
+    val scope = rememberCoroutineScope()
+    var availableUpdate by remember { mutableStateOf<AvailableUpdate?>(null) }
+    var downloadPercent by remember { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(Unit) {
+        withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            val lastCheck = repo.getLastUpdateCheckTime()
+            val sixHoursMs = 6 * 60 * 60 * 1000L
+            if (now - lastCheck > sixHoursMs) {
+                try {
+                    val update = updateManager.checkForUpdate()
+                    repo.setLastUpdateCheckTime(now)
+                    if (update != null && !repo.isUpdateBannerDismissedForBuild(update.build)) {
+                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            availableUpdate = update
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Silently ignore GitHub check failures on Overview
+                }
+            }
+        }
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -518,6 +550,44 @@ fun ReleaseOverviewScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(top = 10.dp, bottom = 24.dp)
     ) {
+        // Optional In-App GitHub Update Banner (only shown when an update is available)
+        val currentUpdate = availableUpdate
+        if (currentUpdate != null) {
+            item(key = "github_update_banner") {
+                UpdateBanner(
+                    update = currentUpdate,
+                    downloadPercent = downloadPercent,
+                    onInstallClick = {
+                        scope.launch {
+                            downloadPercent = -1
+                            val result = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                updateManager.downloadAndInstall(currentUpdate) { downloaded, total ->
+                                    val pct = if (total > 0) (downloaded * 100 / total).toInt() else -1
+                                    downloadPercent = pct
+                                }
+                            }
+                            downloadPercent = null
+                            when (result) {
+                                is InstallResult.Failed -> {
+                                    Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                                }
+                                InstallResult.NeedsInstallPermission -> {
+                                    Toast.makeText(context, str(R.string.allow_install_unknown_apps_for), Toast.LENGTH_LONG).show()
+                                }
+                                InstallResult.InstallerOpened -> {
+                                    // Installer opened, user will confirm
+                                }
+                            }
+                        }
+                    },
+                    onDismissClick = {
+                        repo.dismissUpdateBannerForBuild(currentUpdate.build)
+                        availableUpdate = null
+                    }
+                )
+            }
+        }
+
         // Hero: Screen time today Card
         item {
             Surface(

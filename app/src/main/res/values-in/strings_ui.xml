@@ -380,4 +380,22 @@
     <string name="restricted_setting_title">Tombol abu-abu? &quot;Setelan terbatas&quot;</string>
     <string name="restricted_setting_steps">Android memblokir ini untuk aplikasi yang tidak dipasang dari Play Store. Ketuk Buka info aplikasi, lalu ⋮ (kanan atas) → Izinkan setelan terbatas, lalu kembali dan ketuk Izinkan. Tidak ada opsi ⋮? Ketuk Izinkan sekali dulu, lalu coba lagi.</string>
     <string name="open_app_info">Buka info aplikasi</string>
+
+    <!-- Setup Step 4 & Overview Redirection -->
+    <string name="step_4_of_4">Langkah 4 dari 4 · Perlindungan Aktif</string>
+    <string name="protection_is_now_active">Perlindungan Telah Aktif!</string>
+    <string name="protection_active_desc">Ponsel %1$s kini terlindungi dengan jadwal jam malam dan batas harian Anda.</string>
+    <string name="your_master_recovery_key">Kunci Pemulihan Utama Anda</string>
+    <string name="recovery_key_warning">Simpan kunci ini sekarang. Ini adalah satu-satunya cara untuk mengatur ulang PIN jika Anda lupa. Kunci ini disimpan secara offline di perangkat ini.</string>
+    <string name="btn_go_to_dashboard">Buka Beranda Dasbor</string>
+    <string name="key_copied_to_clipboard">Kunci pemulihan disalin ke papan klip</string>
+    <string name="copy_key">Salin</string>
+
+    <!-- Overview In-App GitHub Update Banner -->
+    <string name="update_banner_title">Pembaruan baru tersedia</string>
+    <string name="update_banner_desc">%1$s siap dipasang dengan perbaikan terbaru.</string>
+    <string name="update_banner_btn_update">Perbarui Sekarang</string>
+    <string name="update_banner_btn_later">Nanti</string>
+    <string name="update_banner_downloading">Mengunduh pembaruan… %1$s%%</string>
+    <string name="update_banner_downloading_indeterminate">Mengunduh pembaruan…</string>
 </resources>
