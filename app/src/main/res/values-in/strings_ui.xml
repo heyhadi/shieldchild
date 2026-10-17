@@ -208,7 +208,8 @@
     <string name="turn_on">Aktifkan</string>
     <string name="only_turn_this_on_if">Aktifkan hanya kalau sidik jari anak tidak tersimpan di HP ini. Sidik jari apa pun yang tersimpan di sini bisa membuka mode orang tua. Kalau nanti ada sidik jari baru, fitur ini otomatis mati.</string>
     <string name="emergency_sos_contact">Nomor HP orang tua</string>
-    <string name="can_call_even_when_locked">%1$s bisa menelepon atau SMS kamu dari layar kunci. Panggilan darurat selalu bisa.</string>
+    <string name="can_call_even_when_locked">%1$s bisa menelepon atau WhatsApp kamu langsung dari layar kunci. Panggilan darurat selalu bisa.</string>
+    <string name="emergency_phone_desc">Mengaktifkan tombol telepon langsung dan WhatsApp 24/7 di layar kunci.</string>
     <string name="e_g_911_or_parent">misal 0812 3456 7890</string>
     <string name="activate_protection_armor">Aktifkan perlindungan</string>
     <string name="grant_these_permissions_to_enforce">Berikan izin ini supaya batas waktu layar berjalan, aplikasi tidak bisa dihapus sembarangan, dan anak tidak bisa mengakalinya.</string>
@@ -399,4 +400,12 @@
     <string name="update_banner_btn_later">Nanti</string>
     <string name="update_banner_downloading">Mengunduh pembaruan… %1$s%%</string>
     <string name="update_banner_downloading_indeterminate">Mengunduh pembaruan…</string>
+
+    <!-- Option C: WhatsApp Parent & Essential Apps -->
+    <string name="whatsapp_parent">WhatsApp Orang Tua</string>
+    <string name="essential_apps">Aplikasi penting</string>
+    <string name="essential_always_allowed">Penting (Selalu Diizinkan)</string>
+    <string name="essential_app_desc">Bisa dibuka dari layar kunci saat waktu habis</string>
+    <string name="allow_in_bedtime">Izinkan juga saat Jam Tidur</string>
+    <string name="essential_badge">Penting</string>
 </resources>

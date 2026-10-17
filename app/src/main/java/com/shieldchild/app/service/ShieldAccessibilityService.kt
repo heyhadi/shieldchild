@@ -11,6 +11,8 @@ import com.shieldchild.app.ui.curfew.CurfewLockActivity
 
 class ShieldAccessibilityService : AccessibilityService() {
 
+    private var lastShadeDismissUptimeMs = 0L
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         checkAndEnforceCurfew()
@@ -33,15 +35,39 @@ class ShieldAccessibilityService : AccessibilityService() {
             val pkgName = event.packageName?.toString() ?: return
 
             // 0. Notification shade collapse when CurfewLockActivity is showing (Task 8)
-            if (CurfewLockActivity.isShowing &&
+            val nowUptime = android.os.SystemClock.elapsedRealtime()
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+                CurfewLockActivity.isShowing &&
                 pkgName == "com.android.systemui" &&
-                !com.shieldchild.app.engine.PhoneGuard.isInCall(this)
+                nowUptime - lastShadeDismissUptimeMs > 1_000L &&
+                !com.shieldchild.app.engine.PhoneGuard.isInCall(this) &&
+                !com.shieldchild.app.engine.PhoneGuard.isAllowedVoipCall(this, "com.whatsapp")
             ) {
+                lastShadeDismissUptimeMs = nowUptime
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
                 } else {
                     @Suppress("DEPRECATION")
                     sendBroadcast(Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS))
+                }
+            }
+
+            val activeWhitelisted = com.shieldchild.app.engine.PhoneGuard.getActiveWhitelistedPackage()
+            val isHelperOrIme = com.shieldchild.app.engine.PhoneGuard.isInputMethod(this, pkgName) ||
+                    com.shieldchild.app.engine.PhoneGuard.isSystemHelper(pkgName)
+
+            if (activeWhitelisted != null && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                if (pkgName != activeWhitelisted &&
+                    pkgName != packageName &&
+                    !isHelperOrIme
+                ) {
+                    com.shieldchild.app.engine.PhoneGuard.clearWhitelistedSession()
+                } else if (pkgName == activeWhitelisted) {
+                    val cls = event.className?.toString().orEmpty()
+                    if (cls.contains("WebView", ignoreCase = true) || cls.contains("InAppBrowser", ignoreCase = true)) {
+                        performGlobalAction(GLOBAL_ACTION_BACK)
+                        return
+                    }
                 }
             }
 
@@ -136,7 +162,11 @@ class ShieldAccessibilityService : AccessibilityService() {
 
             // 3. Notify monitoring service of real-time package switch and PiP / Multi-window detection (Task 8)
             if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-                var reportedPackage = pkgName
+                var reportedPackage = if (activeWhitelisted != null && isHelperOrIme) {
+                    activeWhitelisted
+                } else {
+                    pkgName
+                }
                 val homeLaunchers = getHomeLauncherPackages()
                 if (pkgName in homeLaunchers && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     try {
@@ -186,8 +216,12 @@ class ShieldAccessibilityService : AccessibilityService() {
 
         if (reason != null) {
             // Curfew is active: ensure CurfewLockActivity stays on top
-            if (foregroundPkg != packageName && foregroundPkg != "com.shieldchild.app.ui.curfew.CurfewLockActivity") {
-                CurfewLockLauncher.launch(this, reason, force = true)
+            if (CurfewLockActivity.isShowing) return
+            if (foregroundPkg != packageName &&
+                foregroundPkg != "com.shieldchild.app.ui.curfew.CurfewLockActivity" &&
+                foregroundPkg != "com.android.systemui"
+            ) {
+                CurfewLockLauncher.launch(this, reason)
             }
         }
     }

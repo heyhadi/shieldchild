@@ -59,4 +59,45 @@ class PhoneGuardTest {
         assertFalse(PhoneGuard.shouldYield(context, "com.discord"))
         assertFalse(PhoneGuard.shouldYield(context, "com.roblox"))
     }
+
+    @Test
+    fun whitelistedSessionYieldsOnlyForTargetPackageAndCanBeRevoked() {
+        val context = TestContext()
+        PhoneGuard.startWhitelistedSession("com.whatsapp")
+        assertTrue(PhoneGuard.isWhitelistedSessionActiveFor("com.whatsapp"))
+        assertTrue(PhoneGuard.shouldYield(context, "com.whatsapp"))
+        assertFalse(PhoneGuard.shouldYield(context, "com.google.android.youtube"))
+
+        PhoneGuard.clearWhitelistedSession()
+        assertFalse(PhoneGuard.isWhitelistedSessionActiveFor("com.whatsapp"))
+        assertFalse(PhoneGuard.shouldYield(context, "com.whatsapp"))
+    }
+
+    @Test
+    fun isAllowedVoipCallRecognizesWhatsAppAndRejectsOtherApps() {
+        val audioManager = android.media.TestAudioManager(android.media.AudioManager.MODE_IN_COMMUNICATION)
+        val context = object : android.content.ContextWrapper(null) {
+            override fun getSystemService(name: String): Any? =
+                if (name == android.content.Context.AUDIO_SERVICE) audioManager else null
+        }
+
+        assertTrue(PhoneGuard.isAllowedVoipCall(context, "com.whatsapp"))
+        assertTrue(PhoneGuard.isAllowedVoipCall(context, "com.whatsapp.w4b"))
+        assertFalse(PhoneGuard.isAllowedVoipCall(context, "com.discord"))
+    }
+
+    @Test
+    fun whitelistedSessionAllowsKeyboardsAndSystemHelpers() {
+        val context = TestContext()
+        PhoneGuard.startWhitelistedSession("com.whatsapp")
+        // Keyboards and system helpers yield while session is active
+        assertTrue(PhoneGuard.shouldYield(context, "com.google.android.inputmethod.latin"))
+        assertTrue(PhoneGuard.shouldYield(context, "com.android.systemui"))
+        // Unrelated apps do NOT yield
+        assertFalse(PhoneGuard.shouldYield(context, "com.google.android.youtube"))
+
+        // When session ends, keyboards do NOT yield
+        PhoneGuard.clearWhitelistedSession()
+        assertFalse(PhoneGuard.shouldYield(context, "com.google.android.inputmethod.latin"))
+    }
 }

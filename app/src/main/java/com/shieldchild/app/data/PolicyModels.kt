@@ -8,13 +8,15 @@ data class AppLimit(
     val appName: String,
     val dailyLimitMinutes: Long,
     val isBlocked: Boolean = false,
+    val isEssential: Boolean = false,
+    val allowInBedtime: Boolean = false,
     val usageTodayMinutes: Long = 0L
 ) {
     val isLimitExceeded: Boolean
-        get() = isBlocked || (dailyLimitMinutes > 0 && usageTodayMinutes >= dailyLimitMinutes)
+        get() = !isEssential && (isBlocked || (dailyLimitMinutes > 0 && usageTodayMinutes >= dailyLimitMinutes))
 
     val remainingMinutes: Long
-        get() = if (dailyLimitMinutes > usageTodayMinutes) dailyLimitMinutes - usageTodayMinutes else 0L
+        get() = if (isEssential) Long.MAX_VALUE else if (dailyLimitMinutes > usageTodayMinutes) dailyLimitMinutes - usageTodayMinutes else 0L
 }
 
 /**

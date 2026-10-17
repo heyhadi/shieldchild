@@ -126,4 +126,42 @@ class PolicyEngineTest {
         val otherPausedAccess = AccessState(pausedApps = setOf("tiktok"))
         assertTrue(engine.evaluateLockState(policy, limits, usage, "youtube", weekdayNoon, otherPausedAccess) is LockState.SingleAppLock)
     }
+
+    @Test
+    fun essentialAppNeverReturnsSingleAppLock() {
+        val limits = mapOf(
+            "calculator" to AppLimit("calculator", "Calculator", 0, isBlocked = false, isEssential = true),
+            "study" to AppLimit("study", "Study App", 30, isBlocked = false, isEssential = true),
+            "blockedEssential" to AppLimit("blockedEssential", "Blocked Essential", 0, isBlocked = true, isEssential = true)
+        )
+        val usage = DailyUsageSummary(10, mapOf("study" to 100L))
+
+        assertEquals(LockState.Unlocked, engine.evaluateLockState(policy, limits, usage, "calculator", weekdayNoon))
+        assertEquals(LockState.Unlocked, engine.evaluateLockState(policy, limits, usage, "study", weekdayNoon))
+        assertEquals(LockState.Unlocked, engine.evaluateLockState(policy, limits, usage, "blockedEssential", weekdayNoon))
+    }
+
+    @Test
+    fun getEssentialAppsForReasonRespectsLockReasons() {
+        val repo = testRepo()
+        val app1 = AppLimit("app1", "Alpha", 0, isEssential = true, allowInBedtime = false)
+        val app2 = AppLimit("app2", "Beta", 0, isEssential = true, allowInBedtime = true)
+        val app3 = AppLimit("app3", "Gamma", 30, isEssential = false, allowInBedtime = false)
+        repo.saveAppLimits(listOf(app1, app2, app3))
+
+        // TOTAL_SCREEN_TIME_EXCEEDED returns all essential apps sorted by name
+        val duringDowntime = repo.getEssentialAppsForReason(LockReason.TOTAL_SCREEN_TIME_EXCEEDED)
+        assertEquals(2, duringDowntime.size)
+        assertEquals("Alpha", duringDowntime[0].appName)
+        assertEquals("Beta", duringDowntime[1].appName)
+
+        // SCHEDULED_BEDTIME_CURFEW returns only essential apps where allowInBedtime is true
+        val duringBedtime = repo.getEssentialAppsForReason(LockReason.SCHEDULED_BEDTIME_CURFEW)
+        assertEquals(1, duringBedtime.size)
+        assertEquals("Beta", duringBedtime[0].appName)
+
+        // PARENT_INSTANT_FREEZE returns empty list
+        val duringFreeze = repo.getEssentialAppsForReason(LockReason.PARENT_INSTANT_FREEZE)
+        assertTrue(duringFreeze.isEmpty())
+    }
 }

@@ -42,7 +42,7 @@ class PolicyEngine {
             val limit = appLimits[foregroundPackage]!!
             val usedMinutes = usageSummary.perAppUsageMinutes[foregroundPackage] ?: 0L
 
-            if (limit.isBlocked || (limit.dailyLimitMinutes in 1..usedMinutes)) {
+            if (!limit.isEssential && (limit.isBlocked || (limit.dailyLimitMinutes in 1..usedMinutes))) {
                 return LockState.SingleAppLock(
                     packageName = foregroundPackage,
                     appName = limit.appName,

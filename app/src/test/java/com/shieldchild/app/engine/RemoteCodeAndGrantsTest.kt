@@ -156,6 +156,25 @@ class RemoteCodeAndGrantsTest {
     }
 
     @Test
+    fun grantMinutesWithLockedPackageDoesNotAddWholeDeviceBonusMinutesWhenLimitNotExceeded() {
+        repo.saveCurfewPolicy(repo.getCurfewPolicy().copy(bonusMinutesToday = 0L))
+        val initialBonus = repo.getCurfewPolicy().bonusMinutesToday
+        AccessGrants.grantMinutes(
+            context = context,
+            repo = repo,
+            minutes = 15L,
+            reason = LockReason.TOTAL_SCREEN_TIME_EXCEEDED,
+            method = GrantMethod.PIN,
+            now = now,
+            lockedPackage = "com.tiktok"
+        )
+        val access = repo.getAccessState(now)
+        assertTrue(access.pausedApps.contains("com.tiktok"))
+        assertEquals(initialBonus, repo.getCurfewPolicy().bonusMinutesToday)
+        assertFalse(access.isLimitPaused)
+    }
+
+    @Test
     fun clockAnchorPersistenceAndBootSession() {
         repo.saveClockAnchor(1_700_000_000_000L, 50_000L, 12)
         val (wall, uptime, boot) = repo.getClockAnchor()
@@ -190,5 +209,61 @@ class RemoteCodeAndGrantsTest {
         assertFalse(repo.isParentSessionActive())
         assertFalse(repo.getAccessState().isParentSession)
         assertTrue(repo.getCurfewPolicy().isInstantLocked)
+    }
+
+    @Test
+    fun grantMinutesDuringInstantLockDisablesInstantLockAndPausesLimit() {
+        repo.setInstantLock(true)
+        repo.setDailyLimitExceededToday(true)
+        assertTrue(repo.getCurfewPolicy().isInstantLocked)
+
+        AccessGrants.grantMinutes(
+            context = context,
+            repo = repo,
+            minutes = 15L,
+            reason = LockReason.PARENT_INSTANT_FREEZE,
+            method = GrantMethod.PIN,
+            now = now
+        )
+
+        assertFalse(repo.getCurfewPolicy().isInstantLocked)
+        assertFalse(repo.isDailyLimitExceededToday())
+        val access = repo.getAccessState(now)
+        assertTrue(access.isLimitPaused)
+        assertEquals(15L, repo.getCurfewPolicy().bonusMinutesToday)
+    }
+
+    @Test
+    fun grantRestOfTodayDuringInstantLockDisablesInstantLock() {
+        val cal = Calendar.getInstance().apply { timeInMillis = now }
+        repo.setInstantLock(true)
+        assertTrue(repo.getCurfewPolicy().isInstantLocked)
+
+        AccessGrants.grantRestOfToday(
+            context = context,
+            repo = repo,
+            reason = LockReason.PARENT_INSTANT_FREEZE,
+            method = GrantMethod.PIN,
+            cal = cal
+        )
+
+        assertFalse(repo.getCurfewPolicy().isInstantLocked)
+        assertFalse(repo.isDailyLimitExceededToday())
+        val access = repo.getAccessState(now)
+        assertTrue(access.isLimitPaused)
+    }
+
+    @Test
+    fun turnOffInstantLockDisablesInstantLockAndClearsLimitExceeded() {
+        repo.setInstantLock(true)
+        repo.setDailyLimitExceededToday(true)
+        assertTrue(repo.getCurfewPolicy().isInstantLocked)
+
+        AccessGrants.turnOffInstantLock(context, repo, GrantMethod.PIN, now = now)
+
+        assertFalse(repo.getCurfewPolicy().isInstantLocked)
+        assertFalse(repo.isDailyLimitExceededToday())
+        val access = repo.getAccessState(now)
+        assertTrue(access.isLimitPaused) // Safeguard gives 15m if daily limit was exceeded
     }
 }

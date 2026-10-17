@@ -3,6 +3,7 @@ package com.shieldchild.app.ui.curfew
 import com.shieldchild.app.i18n.str
 import com.shieldchild.app.R
 import android.app.ActivityManager
+import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -57,6 +58,13 @@ import com.shieldchild.app.engine.ParentAuthManager
 import com.shieldchild.app.ui.theme.*
 import java.text.SimpleDateFormat
 import kotlinx.coroutines.delay
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Home
+import com.shieldchild.app.ui.dashboard.AppIconView
+import com.shieldchild.app.data.AppLimit
 import java.util.Date
 import java.util.Locale
 
@@ -64,8 +72,8 @@ class CurfewLockActivity : FragmentActivity() {
 
     private lateinit var authManager: ParentAuthManager
     private lateinit var biometricHelper: BiometricAuthHelper
-    private var lockedPackage: String? = null
-    private var lockedAppName: String? = null
+    private var lockedPackage by mutableStateOf<String?>(null)
+    private var lockedAppName by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -78,18 +86,7 @@ class CurfewLockActivity : FragmentActivity() {
         setupLockWindowFlags()
         tryEnterLockTaskMode()
 
-        lockedPackage = intent.getStringExtra(EXTRA_LOCKED_PACKAGE)
-        lockedAppName = intent.getStringExtra(EXTRA_LOCKED_APP_NAME)
-
-        val lockReasonStr = intent.getStringExtra(EXTRA_LOCK_REASON) ?: LockReason.TOTAL_SCREEN_TIME_EXCEEDED.name
-        lockReason = try {
-            LockReason.valueOf(lockReasonStr)
-        } catch (_: Exception) {
-            LockReason.TOTAL_SCREEN_TIME_EXCEEDED
-        }
-        if (lockReason == LockReason.PARENT_INSTANT_FREEZE) {
-            ShieldApplication.instance.preferencesRepository.endParentSession()
-        }
+        readIntentExtras(intent)
 
         setContent {
             // Re-check the rules while shown: close once nothing should be locked (e.g. a
@@ -134,8 +131,14 @@ class CurfewLockActivity : FragmentActivity() {
             ShieldChildTheme(darkTheme = true) {
                 CurfewLockScreen(
                     reason = lockReason,
+                    lockedAppName = lockedAppName,
+                    onBackToHome = if (isSingleAppOnlyLock()) { { goHomeAndClose() } } else null,
                     onEmergencyCall = { launchEmergencyDialer() },
                     onCallParent = { callParent() },
+                    onWhatsAppParent = { launchWhatsAppParent() },
+                    isWhatsAppAvailable = PhoneGuard.resolveInstalledWhatsAppPackage(this@CurfewLockActivity) != null,
+                    essentialApps = if (lockedPackage == null) ShieldApplication.instance.preferencesRepository.getEssentialAppsForReason(lockReason) else emptyList(),
+                    onLaunchEssentialApp = { pkg -> launchEssentialApp(pkg) },
                     onFingerprintAuth = { triggerBiometricUnlock() },
                     onSendExtensionSms = { launchExtensionSms() },
                     onParentAuthenticated = { method -> authMethod = method },
@@ -283,10 +286,31 @@ class CurfewLockActivity : FragmentActivity() {
         com.shieldchild.app.service.ShieldAccessibilityService.revokeParentUninstall()
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        readIntentExtras(intent)
+    }
+
+    private fun readIntentExtras(intent: Intent?) {
+        lockedPackage = intent?.getStringExtra(EXTRA_LOCKED_PACKAGE)
+        lockedAppName = intent?.getStringExtra(EXTRA_LOCKED_APP_NAME)
+        val lockReasonStr = intent?.getStringExtra(EXTRA_LOCK_REASON) ?: LockReason.TOTAL_SCREEN_TIME_EXCEEDED.name
+        lockReason = try {
+            LockReason.valueOf(lockReasonStr)
+        } catch (_: Exception) {
+            LockReason.TOTAL_SCREEN_TIME_EXCEEDED
+        }
+        if (lockReason == LockReason.PARENT_INSTANT_FREEZE) {
+            ShieldApplication.instance.preferencesRepository.endParentSession()
+        }
+    }
+
     private fun shouldEnforceFront(): Boolean {
         return !isUnlocked &&
                 !PhoneGuard.isWithinCommunicationWindow() &&
                 !PhoneGuard.isInCall(this) &&
+                PhoneGuard.getActiveWhitelistedPackage() == null &&
                 com.shieldchild.app.engine.ProfileGuard.isScreenInteractiveForProfile(this)
     }
 
@@ -336,9 +360,95 @@ class CurfewLockActivity : FragmentActivity() {
         }
     }
 
+    private fun isSingleAppOnlyLock(): Boolean {
+        if (lockedPackage == null) return false
+        val repo = ShieldApplication.instance.preferencesRepository
+        val deviceReason = com.shieldchild.app.engine.CurfewLockLauncher.evaluateRebootLockReason(
+            policy = repo.getCurfewPolicy(),
+            isDailyExceeded = repo.isDailyLimitExceededToday(),
+            access = repo.getAccessState()
+        )
+        return deviceReason == null
+    }
+
+    private fun goHomeAndClose() {
+        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        try {
+            startActivity(homeIntent)
+        } catch (_: Exception) {}
+        closeLock()
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        // Strictly consume back press - lock screen cannot be dismissed via back key
+        if (isSingleAppOnlyLock()) {
+            goHomeAndClose()
+        }
+        // Otherwise strictly consume back press during whole-phone curfew
+    }
+
+    private fun dismissKeyguardAndLaunch(action: () -> Unit) {
+        val km = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+        if (km != null && km.isKeyguardLocked && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            km.requestDismissKeyguard(this, object : KeyguardManager.KeyguardDismissCallback() {
+                override fun onDismissSucceeded() {
+                    super.onDismissSucceeded()
+                    action()
+                }
+                override fun onDismissCancelled() {
+                    super.onDismissCancelled()
+                    PhoneGuard.clearWhitelistedSession()
+                }
+                override fun onDismissError() {
+                    super.onDismissError()
+                    action()
+                }
+            })
+        } else {
+            action()
+        }
+    }
+
+    private fun launchWhatsAppParent() {
+        val rawNumber = ShieldApplication.instance.preferencesRepository.getCurfewPolicy().emergencyPhoneNumber.trim()
+        val waPkg = PhoneGuard.resolveInstalledWhatsAppPackage(this) ?: return
+        val digits = if (rawNumber.startsWith("+")) {
+            rawNumber.filter { it.isDigit() }
+        } else if (rawNumber.startsWith("0")) {
+            "62" + rawNumber.drop(1).filter { it.isDigit() }
+        } else {
+            rawNumber.filter { it.isDigit() }
+        }
+        if (digits.isBlank()) return
+        dismissKeyguardAndLaunch {
+            PhoneGuard.startWhitelistedSession(waPkg)
+            try {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$digits")).apply {
+                    setPackage(waPkg)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                startActivity(intent)
+            } catch (_: Exception) {
+                PhoneGuard.clearWhitelistedSession()
+            }
+        }
+    }
+
+    private fun launchEssentialApp(pkg: String) {
+        val launchIntent = packageManager.getLaunchIntentForPackage(pkg)?.apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        } ?: return
+        dismissKeyguardAndLaunch {
+            PhoneGuard.startWhitelistedSession(pkg)
+            try {
+                startActivity(launchIntent)
+            } catch (_: Exception) {
+                PhoneGuard.clearWhitelistedSession()
+            }
+        }
     }
 
     private fun canMakeCalls(): Boolean {
@@ -425,7 +535,13 @@ fun CurfewLockScreen(
     authManager: ParentAuthManager,
     isRemoteCodeSetUp: Boolean,
     isCallSupported: Boolean = true,
-    onRedeemCode: (String) -> String?
+    onRedeemCode: (String) -> String?,
+    lockedAppName: String? = null,
+    onBackToHome: (() -> Unit)? = null,
+    onWhatsAppParent: (() -> Unit)? = null,
+    isWhatsAppAvailable: Boolean = false,
+    essentialApps: List<AppLimit> = emptyList(),
+    onLaunchEssentialApp: ((String) -> Unit)? = null
 ) {
     var showPinDialog by remember { mutableStateOf(false) }
     var showCodeDialog by remember { mutableStateOf(false) }
@@ -435,16 +551,24 @@ fun CurfewLockScreen(
         SimpleDateFormat("hh:mm", Locale.getDefault()).format(Date())
     }
 
-    val headlineText = when (reason) {
-        LockReason.TOTAL_SCREEN_TIME_EXCEEDED -> str(R.string.downtime_active)
-        LockReason.SCHEDULED_BEDTIME_CURFEW -> str(R.string.bedtime_curfew)
-        LockReason.PARENT_INSTANT_FREEZE -> str(R.string.device_paused)
+    val headlineText = if (lockedAppName != null) {
+        str(R.string.is_on_pause, lockedAppName)
+    } else {
+        when (reason) {
+            LockReason.TOTAL_SCREEN_TIME_EXCEEDED -> str(R.string.downtime_active)
+            LockReason.SCHEDULED_BEDTIME_CURFEW -> str(R.string.bedtime_curfew)
+            LockReason.PARENT_INSTANT_FREEZE -> str(R.string.device_paused)
+        }
     }
 
-    val subtitleText = when (reason) {
-        LockReason.TOTAL_SCREEN_TIME_EXCEEDED -> str(R.string.time_to_unplug_daily_screen)
-        LockReason.SCHEDULED_BEDTIME_CURFEW -> str(R.string.bedtime_hours_active_sleep_well)
-        LockReason.PARENT_INSTANT_FREEZE -> str(R.string.focus_mode_paused_by_parent)
+    val subtitleText = if (lockedAppName != null) {
+        str(R.string.focus_mode_paused_by_parent)
+    } else {
+        when (reason) {
+            LockReason.TOTAL_SCREEN_TIME_EXCEEDED -> str(R.string.time_to_unplug_daily_screen)
+            LockReason.SCHEDULED_BEDTIME_CURFEW -> str(R.string.bedtime_hours_active_sleep_well)
+            LockReason.PARENT_INSTANT_FREEZE -> str(R.string.focus_mode_paused_by_parent)
+        }
     }
 
     // Material You M3 Dark Palette (Slate / Lavender Monet tones)
@@ -537,6 +661,46 @@ fun CurfewLockScreen(
                         textAlign = TextAlign.Center,
                         lineHeight = 20.sp
                     )
+
+                    if (lockedAppName == null && essentialApps.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = str(R.string.essential_apps),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = textPrimary
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(essentialApps) { app ->
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier
+                                        .clickable { onLaunchEssentialApp?.invoke(app.packageName) }
+                                        .width(60.dp)
+                                ) {
+                                    AppIconView(
+                                        packageName = app.packageName,
+                                        appName = app.appName,
+                                        isBlocked = false,
+                                        modifier = Modifier.size(44.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = app.appName,
+                                        fontSize = 11.sp,
+                                        color = textSecondary,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -634,14 +798,48 @@ fun CurfewLockScreen(
                     }
                 }
 
+                if (onBackToHome != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = onBackToHome,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp),
+                        shape = RoundedCornerShape(25.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Shield.colors.line)
+                    ) {
+                        Icon(Icons.Default.Home, contentDescription = null, tint = textSecondary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = str(R.string.go_to_home_screen),
+                            color = textPrimary,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 val parentNumber = remember { ShieldApplication.instance.preferencesRepository.getCurfewPolicy().emergencyPhoneNumber }
-                if (isCallSupported && parentNumber.isNotBlank()) {
-                    TextButton(onClick = onCallParent, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Icon(Icons.Default.Phone, contentDescription = null, tint = Shield.colors.primary, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(str(R.string.call_parent), fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Shield.colors.primary)
+                if (parentNumber.isNotBlank() && (isCallSupported || isWhatsAppAvailable)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (isCallSupported) {
+                            TextButton(onClick = onCallParent, modifier = Modifier.heightIn(min = 48.dp)) {
+                                Icon(Icons.Default.Phone, contentDescription = null, tint = Shield.colors.primary, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(str(R.string.call_parent), fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Shield.colors.primary)
+                            }
+                        }
+                        if (isWhatsAppAvailable) {
+                            TextButton(onClick = { onWhatsAppParent?.invoke() }, modifier = Modifier.heightIn(min = 48.dp)) {
+                                Icon(Icons.Default.Chat, contentDescription = null, tint = Shield.colors.primary, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(str(R.string.whatsapp_parent), fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Shield.colors.primary)
+                            }
+                        }
                     }
                 }
 
@@ -852,26 +1050,26 @@ fun ParentChoiceDialog(
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(16.dp))
-        if (reason == LockReason.PARENT_INSTANT_FREEZE) {
-            DialogOption(str(R.string.turn_off_instant_lock), { onChoice(ParentChoice.InstantLockOff) })
-        } else {
-            Text(str(R.string.give_your_child_time), fontWeight = FontWeight.SemiBold, color = Shield.colors.ink, fontSize = 14.sp)
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                listOf(15L, 30L, 60L).forEach { minutes ->
-                    DialogOption(
-                        if (minutes == 60L) str(R.string.t_1_h) else str(R.string.min_2, minutes),
-                        { onChoice(ParentChoice.ExtraMinutes(minutes)) },
-                        modifier = Modifier.weight(1f),
-                        compact = true
-                    )
-                }
+        Text(str(R.string.give_your_child_time), fontWeight = FontWeight.SemiBold, color = Shield.colors.ink, fontSize = 14.sp)
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            listOf(15L, 30L, 60L).forEach { minutes ->
+                DialogOption(
+                    if (minutes == 60L) str(R.string.t_1_h) else str(R.string.min_2, minutes),
+                    { onChoice(ParentChoice.ExtraMinutes(minutes)) },
+                    modifier = Modifier.weight(1f),
+                    compact = true
+                )
             }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        DialogOption(
+            if (reason == LockReason.SCHEDULED_BEDTIME_CURFEW) str(R.string.no_bedtime_tonight) else str(R.string.no_limit_for_the_rest),
+            { onChoice(ParentChoice.RestOfToday) }
+        )
+        if (reason == LockReason.PARENT_INSTANT_FREEZE) {
             Spacer(modifier = Modifier.height(8.dp))
-            DialogOption(
-                if (reason == LockReason.SCHEDULED_BEDTIME_CURFEW) str(R.string.no_bedtime_tonight) else str(R.string.no_limit_for_the_rest),
-                { onChoice(ParentChoice.RestOfToday) }
-            )
+            DialogOption(str(R.string.turn_off_instant_lock), { onChoice(ParentChoice.InstantLockOff) })
         }
     }
 }

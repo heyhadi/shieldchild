@@ -1041,13 +1041,13 @@ fun ReleaseOverviewScreen(
 
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),
-                                    color = if (app.isBlocked) Shield.colors.errorContainer else Shield.colors.surfaceVariant
+                                    color = if (app.isEssential) Shield.colors.primaryContainer else if (app.isBlocked) Shield.colors.errorContainer else Shield.colors.surfaceVariant
                                 ) {
                                     Text(
-                                        text = if (app.isBlocked) str(R.string.blocked) else str(R.string.m_limit, app.dailyLimitMinutes),
+                                        text = if (app.isEssential) str(R.string.essential_badge) else if (app.isBlocked) str(R.string.blocked) else str(R.string.m_limit, app.dailyLimitMinutes),
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (app.isBlocked) Shield.colors.error else colOnPrimaryContainer,
+                                        color = if (app.isEssential) Shield.colors.onPrimaryContainer else if (app.isBlocked) Shield.colors.error else colOnPrimaryContainer,
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                     )
                                 }
@@ -1166,6 +1166,8 @@ fun ReleaseAppLimitsScreen(
     var searchQuery by remember { mutableStateOf("") }
     var configureLimitMinutes by remember { mutableStateOf(45L) }
     var configureIsBlocked by remember { mutableStateOf(false) }
+    var configureIsEssential by remember { mutableStateOf(false) }
+    var configureAllowInBedtime by remember { mutableStateOf(false) }
 
     var appToDeleteConfirm by remember { mutableStateOf<AppLimit?>(null) }
 
@@ -1336,18 +1338,42 @@ fun ReleaseAppLimitsScreen(
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = app.appName,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = colInk,
+                                            maxLines = 1
+                                        )
+                                        if (app.isEssential) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = colPrimaryContainer
+                                            ) {
+                                                Text(
+                                                    text = str(R.string.essential_badge),
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = colOnPrimaryContainer,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
                                     Text(
-                                        text = app.appName,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colInk,
-                                        maxLines = 1
-                                    )
-                                    Text(
-                                        text = if (app.isBlocked) str(R.string.blocked_completely) else str(R.string.m_used_m_limit, app.usageTodayMinutes, app.dailyLimitMinutes),
+                                        text = if (app.isEssential) {
+                                            if (app.allowInBedtime) "${str(R.string.essential_always_allowed)} • ${str(R.string.allow_in_bedtime)}"
+                                            else str(R.string.essential_always_allowed)
+                                        } else if (app.isBlocked) {
+                                            str(R.string.blocked_completely)
+                                        } else {
+                                            str(R.string.m_used_m_limit, app.usageTodayMinutes, app.dailyLimitMinutes)
+                                        },
                                         fontSize = 12.5.sp,
-                                        fontWeight = if (app.isBlocked) FontWeight.SemiBold else FontWeight.Medium,
-                                        color = if (app.isBlocked) Shield.colors.error else colInkMuted
+                                        fontWeight = if (app.isBlocked || app.isEssential) FontWeight.SemiBold else FontWeight.Medium,
+                                        color = if (app.isBlocked) Shield.colors.error else if (app.isEssential) colPrimary else colInkMuted
                                     )
                                 }
                             }
@@ -1356,21 +1382,23 @@ fun ReleaseAppLimitsScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Switch(
-                                    checked = !app.isBlocked,
-                                    onCheckedChange = { isAllowed ->
-                                        // Blocked apps saved by v1.0.0 have limit 0, which would mean "unlimited" once unblocked.
-                                        val limit = if (app.dailyLimitMinutes > 0) app.dailyLimitMinutes else 45L
-                                        onUpdateLimit(app.copy(isBlocked = !isAllowed, dailyLimitMinutes = limit))
-                                    },
-                                    colors = SwitchDefaults.colors(
-                                        checkedThumbColor = Shield.colors.onPrimary,
-                                        checkedTrackColor = colPrimary,
-                                        uncheckedThumbColor = Shield.colors.outline,
-                                        uncheckedTrackColor = Shield.colors.surfaceVariant,
-                                        uncheckedBorderColor = Shield.colors.outline
+                                if (!app.isEssential) {
+                                    Switch(
+                                        checked = !app.isBlocked,
+                                        onCheckedChange = { isAllowed ->
+                                            // Blocked apps saved by v1.0.0 have limit 0, which would mean "unlimited" once unblocked.
+                                            val limit = if (app.dailyLimitMinutes > 0) app.dailyLimitMinutes else 45L
+                                            onUpdateLimit(app.copy(isBlocked = !isAllowed, dailyLimitMinutes = limit))
+                                        },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Shield.colors.onPrimary,
+                                            checkedTrackColor = colPrimary,
+                                            uncheckedThumbColor = Shield.colors.outline,
+                                            uncheckedTrackColor = Shield.colors.surfaceVariant,
+                                            uncheckedBorderColor = Shield.colors.outline
+                                        )
                                     )
-                                )
+                                }
 
                                 IconButton(
                                     onClick = { appToDeleteConfirm = app },
@@ -1386,8 +1414,32 @@ fun ReleaseAppLimitsScreen(
                             }
                         }
 
-                        // Interactive Slider if app is allowed
-                        if (!app.isBlocked) {
+                        if (app.isEssential) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = str(R.string.allow_in_bedtime),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = colInk
+                                )
+                                Switch(
+                                    checked = app.allowInBedtime,
+                                    onCheckedChange = { allowed ->
+                                        onUpdateLimit(app.copy(allowInBedtime = allowed))
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Shield.colors.onPrimary,
+                                        checkedTrackColor = colPrimary
+                                    )
+                                )
+                            }
+                        } else if (!app.isBlocked) {
+                            // Interactive Slider if app is allowed
                             Spacer(modifier = Modifier.height(10.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1547,6 +1599,8 @@ fun ReleaseAppLimitsScreen(
                                                 appToConfigure = item
                                                 configureLimitMinutes = 45L
                                                 configureIsBlocked = false
+                                                configureIsEssential = false
+                                                configureAllowInBedtime = false
                                             }
                                     ) {
                                         Row(
@@ -1686,92 +1740,162 @@ fun ReleaseAppLimitsScreen(
 
                         Spacer(modifier = Modifier.height(18.dp))
 
-                        // Block completely toggle
+                        // Essential (Always Allowed) toggle card
                         Surface(
                             shape = RoundedCornerShape(16.dp),
-                            color = if (configureIsBlocked) Shield.colors.errorContainer else Shield.colors.cardSubtle,
+                            color = if (configureIsEssential) Shield.colors.primaryContainer else Shield.colors.cardSubtle,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column {
-                                    Text(
-                                        text = str(R.string.block_completely),
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (configureIsBlocked) Shield.colors.error else colInk
-                                    )
-                                    Text(
-                                        text = str(R.string.child_cannot_open_this_app),
-                                        fontSize = 12.sp,
-                                        color = if (configureIsBlocked) Shield.colors.error else colInkMuted
+                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = str(R.string.essential_always_allowed),
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (configureIsEssential) Shield.colors.onPrimaryContainer else colInk
+                                        )
+                                        Text(
+                                            text = str(R.string.essential_app_desc),
+                                            fontSize = 12.sp,
+                                            color = if (configureIsEssential) Shield.colors.onPrimaryContainer else colInkMuted
+                                        )
+                                    }
+                                    Switch(
+                                        checked = configureIsEssential,
+                                        onCheckedChange = { isChecked ->
+                                            configureIsEssential = isChecked
+                                            if (isChecked) {
+                                                configureIsBlocked = false
+                                            }
+                                        },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Shield.colors.onPrimary,
+                                            checkedTrackColor = colPrimary
+                                        )
                                     )
                                 }
-                                Switch(
-                                    checked = configureIsBlocked,
-                                    onCheckedChange = { configureIsBlocked = it },
-                                    colors = SwitchDefaults.colors(
-                                        checkedThumbColor = Shield.colors.onPrimary,
-                                        checkedTrackColor = Shield.colors.error
-                                    )
-                                )
-                            }
-                        }
 
-                        if (!configureIsBlocked) {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = str(R.string.daily_time_limit_m, configureLimitMinutes),
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colInk
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // Quick preset chips
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                listOf(15L, 30L, 45L, 60L, 90L, 120L).forEach { mins ->
-                                    val isSelected = configureLimitMinutes == mins
-                                    Surface(
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = if (isSelected) colPrimary else Shield.colors.surfaceVariant,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clickable { configureLimitMinutes = mins }
+                                if (configureIsEssential) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(
-                                            text = str(R.string.min, mins),
-                                            fontSize = 12.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (isSelected) Shield.colors.onPrimary else colInk,
-                                            textAlign = TextAlign.Center,
-                                            modifier = Modifier.padding(vertical = 8.dp)
+                                            text = str(R.string.allow_in_bedtime),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = Shield.colors.onPrimaryContainer
+                                        )
+                                        Switch(
+                                            checked = configureAllowInBedtime,
+                                            onCheckedChange = { configureAllowInBedtime = it },
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = Shield.colors.onPrimary,
+                                                checkedTrackColor = colPrimary
+                                            )
                                         )
                                     }
                                 }
                             }
+                        }
 
-                            Spacer(modifier = Modifier.height(10.dp))
+                        if (!configureIsEssential) {
+                            Spacer(modifier = Modifier.height(12.dp))
 
-                            Slider(
-                                value = configureLimitMinutes.toFloat(),
-                                onValueChange = { configureLimitMinutes = it.toLong() },
-                                valueRange = 15f..180f,
-                                steps = 10,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = colPrimary,
-                                    activeTrackColor = colPrimary
-                                ),
+                            // Block completely toggle
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (configureIsBlocked) Shield.colors.errorContainer else Shield.colors.cardSubtle,
                                 modifier = Modifier.fillMaxWidth()
-                            )
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = str(R.string.block_completely),
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (configureIsBlocked) Shield.colors.error else colInk
+                                        )
+                                        Text(
+                                            text = str(R.string.child_cannot_open_this_app),
+                                            fontSize = 12.sp,
+                                            color = if (configureIsBlocked) Shield.colors.error else colInkMuted
+                                        )
+                                    }
+                                    Switch(
+                                        checked = configureIsBlocked,
+                                        onCheckedChange = { configureIsBlocked = it },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Shield.colors.onPrimary,
+                                            checkedTrackColor = Shield.colors.error
+                                        )
+                                    )
+                                }
+                            }
+
+                            if (!configureIsBlocked) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = str(R.string.daily_time_limit_m, configureLimitMinutes),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colInk
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Quick preset chips
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    listOf(15L, 30L, 45L, 60L, 90L, 120L).forEach { mins ->
+                                        val isSelected = configureLimitMinutes == mins
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isSelected) colPrimary else Shield.colors.surfaceVariant,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { configureLimitMinutes = mins }
+                                        ) {
+                                            Text(
+                                                text = str(R.string.min, mins),
+                                                fontSize = 12.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSelected) Shield.colors.onPrimary else colInk,
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.padding(vertical = 8.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Slider(
+                                    value = configureLimitMinutes.toFloat(),
+                                    onValueChange = { configureLimitMinutes = it.toLong() },
+                                    valueRange = 15f..180f,
+                                    steps = 10,
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = colPrimary,
+                                        activeTrackColor = colPrimary
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(20.dp))
@@ -1795,8 +1919,10 @@ fun ReleaseAppLimitsScreen(
                                         AppLimit(
                                             packageName = selected.packageName,
                                             appName = selected.appName,
-                                            dailyLimitMinutes = configureLimitMinutes,
-                                            isBlocked = configureIsBlocked,
+                                            dailyLimitMinutes = if (configureIsEssential) 0L else configureLimitMinutes,
+                                            isBlocked = if (configureIsEssential) false else configureIsBlocked,
+                                            isEssential = configureIsEssential,
+                                            allowInBedtime = configureAllowInBedtime,
                                             usageTodayMinutes = 0L
                                         )
                                     )
@@ -2210,6 +2336,8 @@ fun ReleaseCurfewScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(str(R.string.emergency_number), fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = colInkMuted)
+                                Text(str(R.string.emergency_phone_desc), fontSize = 11.sp, fontWeight = FontWeight.Normal, color = colInkMuted)
+                                Spacer(modifier = Modifier.height(4.dp))
                                 BasicTextField(
                                     value = emergencyPhone,
                                     onValueChange = {

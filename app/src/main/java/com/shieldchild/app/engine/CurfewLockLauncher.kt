@@ -54,32 +54,34 @@ object CurfewLockLauncher {
             context.startActivity(lockIntent)
         } catch (_: Exception) {}
 
-        // 2. Full-Screen Intent Notification for 100% reliability after device reboot
-        try {
-            val pendingIntent = PendingIntent.getActivity(
-                context,
-                NOTIFICATION_LOCK_ID,
-                lockIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
+        // 2. Full-Screen Intent Notification for 100% reliability after device reboot (only if not already showing)
+        if (!CurfewLockActivity.isShowing) {
+            try {
+                val pendingIntent = PendingIntent.getActivity(
+                    context,
+                    NOTIFICATION_LOCK_ID,
+                    lockIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
 
-            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            if (nm != null) {
-                val notification = NotificationCompat.Builder(context, ShieldApplication.CHANNEL_LOCK)
-                    .setSmallIcon(R.drawable.ic_shield)
-                    .setContentTitle(str(R.string.curfew_lockdown_active))
-                    .setContentText(getLockDescription(reason))
-                    .setPriority(NotificationCompat.PRIORITY_MAX)
-                    .setCategory(NotificationCompat.CATEGORY_ALARM)
-                    .setFullScreenIntent(pendingIntent, true)
-                    .setOngoing(true)
-                    .setAutoCancel(false)
-                    .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-                    .build()
+                val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                if (nm != null) {
+                    val notification = NotificationCompat.Builder(context, ShieldApplication.CHANNEL_LOCK)
+                        .setSmallIcon(R.drawable.ic_shield)
+                        .setContentTitle(str(R.string.curfew_lockdown_active))
+                        .setContentText(getLockDescription(reason))
+                        .setPriority(NotificationCompat.PRIORITY_MAX)
+                        .setCategory(NotificationCompat.CATEGORY_ALARM)
+                        .setFullScreenIntent(pendingIntent, true)
+                        .setOngoing(true)
+                        .setAutoCancel(false)
+                        .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                        .build()
 
-                nm.notify(NOTIFICATION_LOCK_ID, notification)
-            }
-        } catch (_: Exception) {}
+                    nm.notify(NOTIFICATION_LOCK_ID, notification)
+                }
+            } catch (_: Exception) {}
+        }
     }
 
     fun dismissLockNotification(context: Context) {

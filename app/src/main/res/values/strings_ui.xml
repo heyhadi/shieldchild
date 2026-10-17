@@ -209,7 +209,8 @@
     <string name="turn_on">Turn on</string>
     <string name="only_turn_this_on_if">Only turn this on if your child has no fingerprint saved on this phone. Any fingerprint saved here could unlock parent mode. If a new fingerprint is added later, fingerprint unlock turns itself off.</string>
     <string name="emergency_sos_contact">Parent\'s phone</string>
-    <string name="can_call_even_when_locked">%1$s can call or text you from the lock screen. Emergency calls always work.</string>
+    <string name="can_call_even_when_locked">%1$s can call or WhatsApp you directly from the lock screen. Emergency calls always work.</string>
+    <string name="emergency_phone_desc">Enables 24/7 direct phone call and WhatsApp chat buttons on the lock screen.</string>
     <string name="e_g_911_or_parent">e.g. 0812 3456 7890</string>
     <string name="activate_protection_armor">Activate Protection Armor</string>
     <string name="grant_these_permissions_to_enforce">Grant these permissions to enforce screen time limits, block unauthorized app deletion, and prevent bypass attempts.</string>
@@ -404,4 +405,12 @@
     <string name="update_banner_btn_later">Later</string>
     <string name="update_banner_downloading">Downloading update… %1$s%%</string>
     <string name="update_banner_downloading_indeterminate">Downloading update…</string>
+
+    <!-- Option C: WhatsApp Parent & Essential Apps -->
+    <string name="whatsapp_parent">WhatsApp Parent</string>
+    <string name="essential_apps">Essential apps</string>
+    <string name="essential_always_allowed">Essential (Always Allowed)</string>
+    <string name="essential_app_desc">Available on the lock screen when screen time runs out</string>
+    <string name="allow_in_bedtime">Allow during Bedtime too</string>
+    <string name="essential_badge">Essential</string>
 </resources>

@@ -77,6 +77,9 @@ class ShieldMonitorService : Service() {
             addAction(Intent.ACTION_USER_BACKGROUND)
             addAction(Intent.ACTION_USER_FOREGROUND)
         })
+        if (preferencesRepository.getCurfewPolicy().isInstantLocked) {
+            com.shieldchild.app.engine.PhoneGuard.clearWhitelistedSession()
+        }
         startMonitoringLoop()
     }
 
@@ -102,6 +105,7 @@ class ShieldMonitorService : Service() {
     private val screenOffReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             ShieldAccessibilityService.revokeParentUninstall()
+            com.shieldchild.app.engine.PhoneGuard.clearWhitelistedSession()
             if (!com.shieldchild.app.engine.ProfileGuard.isCurrentProfileActive(this@ShieldMonitorService)) return
             if (!preferencesRepository.hasParentSessionRecord()) return
             // The screen also goes off at the ear during a call; keep the parent's session.
@@ -152,6 +156,7 @@ class ShieldMonitorService : Service() {
                 if (tampered && !parentIsHere && preferencesRepository.isSetupCompleted()) {
                     preferencesRepository.setInstantLock(true)
                     preferencesRepository.addGrantLog(com.shieldchild.app.data.GrantMethod.SYSTEM, com.shieldchild.app.data.GrantLog.CLOCK_CHANGED)
+                    preferencesRepository.saveClockAnchor(nowWallMs, nowUptimeMs, currentBoot)
                 } else if (parentIsHere || (autoTime && autoZone) || currentBoot != anchorBoot || anchorWallMs == 0L) {
                     preferencesRepository.saveClockAnchor(nowWallMs, nowUptimeMs, currentBoot)
                 }
@@ -231,6 +236,7 @@ class ShieldMonitorService : Service() {
                     com.shieldchild.app.data.GrantMethod.SYSTEM,
                     com.shieldchild.app.data.GrantLog.CLOCK_CHANGED
                 )
+                preferencesRepository.saveClockAnchor(nowWallMs, nowUptimeMs, currentBoot)
             }
         }
 

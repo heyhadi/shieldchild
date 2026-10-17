@@ -42,11 +42,19 @@ object AccessGrants {
         lockedPackage: String? = null
     ) {
         val until = now + minutes * 60_000L
-        applyGrant(repo, reason, until)
         if (lockedPackage != null) {
+            val deviceExceeded = repo.isDailyLimitExceededToday()
             repo.pauseAppLimitUntil(lockedPackage, until)
+            // Only lift whole-device lock if whole-device limit/curfew is also active right now
+            if (deviceExceeded || reason == LockReason.SCHEDULED_BEDTIME_CURFEW || reason == LockReason.PARENT_INSTANT_FREEZE || repo.getCurfewPolicy().isInstantLocked) {
+                applyGrant(repo, reason, until)
+            }
+        } else {
+            applyGrant(repo, reason, until)
+            if (reason == LockReason.TOTAL_SCREEN_TIME_EXCEEDED || reason == LockReason.PARENT_INSTANT_FREEZE) {
+                repo.addBonusMinutes(minutes)
+            }
         }
-        if (reason == LockReason.TOTAL_SCREEN_TIME_EXCEEDED) repo.addBonusMinutes(minutes)
         repo.addGrantLog(method, GrantLog.minutes(minutes))
         recheck(context)
     }
@@ -68,16 +76,30 @@ object AccessGrants {
                 set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
             }.timeInMillis
         }
-        applyGrant(repo, reason, until)
         if (lockedPackage != null) {
+            val deviceExceeded = repo.isDailyLimitExceededToday()
             repo.pauseAppLimitUntil(lockedPackage, until)
+            if (deviceExceeded || reason == LockReason.SCHEDULED_BEDTIME_CURFEW || reason == LockReason.PARENT_INSTANT_FREEZE || repo.getCurfewPolicy().isInstantLocked) {
+                applyGrant(repo, reason, until)
+            }
+        } else {
+            applyGrant(repo, reason, until)
         }
         repo.addGrantLog(method, if (reason == LockReason.SCHEDULED_BEDTIME_CURFEW) GrantLog.BEDTIME_OFF else GrantLog.REST_OF_TODAY)
         recheck(context)
     }
 
-    fun turnOffInstantLock(context: Context, repo: PreferencesRepository, method: GrantMethod) {
+    fun turnOffInstantLock(
+        context: Context,
+        repo: PreferencesRepository,
+        method: GrantMethod,
+        now: Long = System.currentTimeMillis()
+    ) {
         repo.setInstantLock(false)
+        if (repo.isDailyLimitExceededToday()) {
+            repo.pauseLimitUntil(maxOf(now + 15 * 60_000L, repo.getLimitPausedUntil()))
+            repo.setDailyLimitExceededToday(false)
+        }
         repo.addGrantLog(method, GrantLog.INSTANT_OFF)
         recheck(context)
     }
@@ -91,8 +113,14 @@ object AccessGrants {
             LockReason.TOTAL_SCREEN_TIME_EXCEEDED -> {
                 repo.pauseLimitUntil(maxOf(until, repo.getLimitPausedUntil()))
             }
-            // Grants never lift an instant lock; the parent turns it off explicitly.
-            LockReason.PARENT_INSTANT_FREEZE -> Unit
+            LockReason.PARENT_INSTANT_FREEZE -> {
+                repo.setInstantLock(false)
+                repo.pauseLimitUntil(maxOf(until, repo.getLimitPausedUntil()))
+                repo.pauseBedtimeUntil(maxOf(until, repo.getBedtimePausedUntil()))
+            }
+        }
+        if (repo.getCurfewPolicy().isInstantLocked) {
+            repo.setInstantLock(false)
         }
         repo.setDailyLimitExceededToday(false)
     }

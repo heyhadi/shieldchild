@@ -26,5 +26,6 @@ yarn-error.*
 # Temporary XML dumps and scratch scripts
 dump_*.xml
 window_dump.xml
+repomix*
 *.jks
 *.keystore

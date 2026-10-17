@@ -130,6 +130,7 @@ class PreferencesRepository(
     fun saveCurfewPolicy(policy: DeviceCurfewPolicy) {
         if (policy.isInstantLocked) {
             endParentSession()
+            com.shieldchild.app.engine.PhoneGuard.clearWhitelistedSession()
         }
         prefs.edit()
             .putBoolean(KEY_DAILY_LIMIT_ENABLED, policy.isDailyLimitEnabled)
@@ -149,6 +150,7 @@ class PreferencesRepository(
     fun setInstantLock(locked: Boolean) {
         if (locked) {
             endParentSession()
+            com.shieldchild.app.engine.PhoneGuard.clearWhitelistedSession()
         }
         prefs.edit().putBoolean(KEY_INSTANT_LOCKED, locked).apply()
     }
@@ -377,7 +379,9 @@ class PreferencesRepository(
                 val name = obj.optString("appName", pkg)
                 val limit = obj.getLong("dailyLimitMinutes")
                 val blocked = obj.optBoolean("isBlocked", false)
-                limits[pkg] = AppLimit(pkg, name, limit, blocked)
+                val essential = obj.optBoolean("isEssential", false)
+                val allowBedtime = obj.optBoolean("allowInBedtime", false)
+                limits[pkg] = AppLimit(pkg, name, limit, blocked, isEssential = essential, allowInBedtime = allowBedtime)
             }
         } catch (_: Exception) {}
         return limits
@@ -391,10 +395,19 @@ class PreferencesRepository(
                 put("appName", limit.appName)
                 put("dailyLimitMinutes", limit.dailyLimitMinutes)
                 put("isBlocked", limit.isBlocked)
+                put("isEssential", limit.isEssential)
+                put("allowInBedtime", limit.allowInBedtime)
             }
             array.put(obj)
         }
         prefs.edit().putString(KEY_APP_LIMITS_JSON, array.toString()).apply()
+    }
+
+    fun getEssentialAppsForReason(reason: LockReason): List<AppLimit> {
+        if (reason == LockReason.PARENT_INSTANT_FREEZE) return emptyList()
+        return getAppLimits().values.filter { limit ->
+            limit.isEssential && (reason != LockReason.SCHEDULED_BEDTIME_CURFEW || limit.allowInBedtime)
+        }.sortedBy { it.appName.lowercase() }
     }
 
     fun setAppLimit(limit: AppLimit) {
@@ -419,7 +432,10 @@ class PreferencesRepository(
 
     fun setDailyLimitExceededToday(exceeded: Boolean) {
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-        prefs.edit().putString(KEY_DAILY_LIMIT_EXCEEDED_DAY, if (exceeded) todayStr else "").apply()
+        prefs.edit()
+            .putString(KEY_LAST_RECORDED_DAY, todayStr)
+            .putString(KEY_DAILY_LIMIT_EXCEEDED_DAY, if (exceeded) todayStr else "")
+            .apply()
     }
 
     // --- Daily Reset Helper ---
