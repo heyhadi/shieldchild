@@ -58,6 +58,7 @@ import com.shieldchild.app.ui.onboarding.FirstTimeSetupScreen
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.FragmentActivity
+import kotlinx.coroutines.launch
 import com.shieldchild.app.update.UpdateManager
 import com.shieldchild.app.update.AvailableUpdate
 import com.shieldchild.app.update.InstallResult
