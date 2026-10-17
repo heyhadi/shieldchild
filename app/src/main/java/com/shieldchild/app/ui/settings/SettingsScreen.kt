@@ -34,6 +34,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.shieldchild.app.ShieldApplication
 import com.shieldchild.app.ui.theme.Shield
 import com.shieldchild.app.ui.theme.ThemeMode
 import com.shieldchild.app.ui.theme.ThemeState
@@ -63,8 +64,13 @@ fun SettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val updates = remember { UpdateManager(context.applicationContext) }
+    val repo = remember { ShieldApplication.instance.preferencesRepository }
     val version = remember { str(R.string.build, updates.installedVersionName(), updates.installedBuild()) }
-    var updateUi by remember { mutableStateOf<UpdateUi>(UpdateUi.Idle) }
+    val cachedUpdate = remember {
+        val cached = repo.getCachedUpdate()
+        if (cached != null && cached.build > updates.installedBuild()) cached else null
+    }
+    var updateUi by remember { mutableStateOf<UpdateUi>(cachedUpdate?.let { UpdateUi.Available(it) } ?: UpdateUi.Idle) }
 
     fun install(update: AvailableUpdate) {
         updateUi = UpdateUi.Downloading(null)
@@ -168,8 +174,11 @@ fun SettingsScreen(onBack: () -> Unit) {
                                 updateUi = UpdateUi.Checking
                                 scope.launch {
                                     updateUi = try {
-                                        withContext(Dispatchers.IO) { updates.checkForUpdate() }
-                                            ?.let { UpdateUi.Available(it) } ?: UpdateUi.UpToDate
+                                        val update = withContext(Dispatchers.IO) { updates.checkForUpdate() }
+                                        val now = System.currentTimeMillis()
+                                        repo.setLastUpdateCheckTime(now)
+                                        repo.setCachedUpdate(update)
+                                        update?.let { UpdateUi.Available(it) } ?: UpdateUi.UpToDate
                                     } catch (e: java.io.IOException) {
                                         android.util.Log.w("ShieldChildUpdate", "Update check failed", e)
                                         // Some phones (e.g. LineageOS) switch internet off per app; the lookup then fails.

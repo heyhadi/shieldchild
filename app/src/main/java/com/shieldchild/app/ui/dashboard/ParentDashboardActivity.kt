@@ -534,21 +534,55 @@ fun ReleaseOverviewScreen(
     val repo = remember { ShieldApplication.instance.preferencesRepository }
     val updateManager = remember { UpdateManager(context) }
     val scope = rememberCoroutineScope()
-    var availableUpdate by remember { mutableStateOf<AvailableUpdate?>(null) }
+    val installedBuild = remember { updateManager.installedBuild() }
+    val initialCached = remember {
+        val cached = repo.getCachedUpdate()
+        if (cached != null && cached.build > installedBuild && !repo.isUpdateBannerDismissedForBuild(cached.build)) {
+            cached
+        } else {
+            null
+        }
+    }
+    var availableUpdate by remember { mutableStateOf<AvailableUpdate?>(initialCached) }
     var downloadPercent by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(Unit) {
         withContext(kotlinx.coroutines.Dispatchers.IO) {
             val now = System.currentTimeMillis()
             val lastCheck = repo.getLastUpdateCheckTime()
-            val sixHoursMs = 6 * 60 * 60 * 1000L
-            if (now - lastCheck > sixHoursMs) {
+            val cached = repo.getCachedUpdate()
+
+            // If installed build caught up to or exceeded cached build, clean it up
+            if (cached != null && cached.build <= installedBuild) {
+                repo.setCachedUpdate(null)
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    if (availableUpdate?.build == cached.build) availableUpdate = null
+                }
+            } else if (cached != null && cached.build > installedBuild && !repo.isUpdateBannerDismissedForBuild(cached.build)) {
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    availableUpdate = cached
+                }
+            }
+
+            val hasActiveCached = cached != null && cached.build > installedBuild
+            val fifteenMinutesMs = 15 * 60 * 1000L
+            val fourHoursMs = 4 * 60 * 60 * 1000L
+            val shouldCheck = lastCheck == 0L ||
+                (!hasActiveCached && now - lastCheck > fifteenMinutesMs) ||
+                (now - lastCheck > fourHoursMs)
+
+            if (shouldCheck) {
                 try {
                     val update = updateManager.checkForUpdate()
                     repo.setLastUpdateCheckTime(now)
+                    repo.setCachedUpdate(update)
                     if (update != null && !repo.isUpdateBannerDismissedForBuild(update.build)) {
                         withContext(kotlinx.coroutines.Dispatchers.Main) {
                             availableUpdate = update
+                        }
+                    } else if (update == null) {
+                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            availableUpdate = null
                         }
                     }
                 } catch (_: Exception) {

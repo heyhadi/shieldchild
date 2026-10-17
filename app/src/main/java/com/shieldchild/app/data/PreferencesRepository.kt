@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.os.SystemClock
 import android.provider.Settings
 import com.shieldchild.app.engine.ParentAuthManager
+import com.shieldchild.app.update.AvailableUpdate
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -450,6 +451,31 @@ class PreferencesRepository(
         prefs.edit().putLong(KEY_DISMISSED_UPDATE_BUILD, build).apply()
     }
 
+    fun getCachedUpdate(): AvailableUpdate? {
+        val build = prefs.getLong(KEY_CACHED_UPDATE_BUILD, -1L)
+        val title = prefs.getString(KEY_CACHED_UPDATE_TITLE, null)
+        val url = prefs.getString(KEY_CACHED_UPDATE_URL, null)
+        return if (build > 0 && !title.isNullOrBlank() && !url.isNullOrBlank()) {
+            AvailableUpdate(title, url, build)
+        } else null
+    }
+
+    fun setCachedUpdate(update: AvailableUpdate?) {
+        if (update != null) {
+            prefs.edit()
+                .putLong(KEY_CACHED_UPDATE_BUILD, update.build)
+                .putString(KEY_CACHED_UPDATE_TITLE, update.title)
+                .putString(KEY_CACHED_UPDATE_URL, update.apkUrl)
+                .apply()
+        } else {
+            prefs.edit()
+                .remove(KEY_CACHED_UPDATE_BUILD)
+                .remove(KEY_CACHED_UPDATE_TITLE)
+                .remove(KEY_CACHED_UPDATE_URL)
+                .apply()
+        }
+    }
+
     companion object {
         private const val PREFS_NAME = "shield_child_secure_prefs"
         private const val KEY_PAUSED_APPS_JSON = "key_paused_apps_json"
@@ -498,6 +524,9 @@ class PreferencesRepository(
         private const val KEY_REMOTE_COUNT_DAY = "key_remote_count_day"
         private const val KEY_LAST_UPDATE_CHECK_TIME = "key_last_update_check_time"
         private const val KEY_DISMISSED_UPDATE_BUILD = "key_dismissed_update_build"
+        private const val KEY_CACHED_UPDATE_BUILD = "key_cached_update_build"
+        private const val KEY_CACHED_UPDATE_TITLE = "key_cached_update_title"
+        private const val KEY_CACHED_UPDATE_URL = "key_cached_update_url"
         private const val MAX_GRANT_LOG = 50
 
         // Hard end even if someone keeps touching: a child handed the phone gets at most this.
