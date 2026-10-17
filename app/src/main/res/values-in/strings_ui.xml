@@ -234,6 +234,7 @@
     <string name="min_given">+%1$s menit diberikan</string>
     <string name="my_phone_is_locked_can">HP aku terkunci. Boleh minta tambahan 15 menit? - %1$s</string>
     <string name="unable_to_open_sms_messaging">Tidak bisa membuka aplikasi SMS.</string>
+    <string name="unable_to_open_phone_dialer">Tidak bisa membuka aplikasi telepon.</string>
     <string name="downtime_active">Waktu istirahat</string>
     <string name="bedtime_curfew">Jam tidur</string>
     <string name="device_paused">HP dijeda</string>

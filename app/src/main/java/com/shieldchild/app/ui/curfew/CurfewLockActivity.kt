@@ -10,7 +10,10 @@ import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import android.widget.Toast
+import android.content.pm.PackageManager
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
+import androidx.core.view.WindowCompat
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -65,7 +68,9 @@ class CurfewLockActivity : FragmentActivity() {
     private var lockedAppName: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         currentInstance = java.lang.ref.WeakReference(this)
         authManager = ParentAuthManager(ShieldApplication.instance.preferencesRepository)
         biometricHelper = BiometricAuthHelper(this)
@@ -137,6 +142,7 @@ class CurfewLockActivity : FragmentActivity() {
                     isFingerprintAvailable = biometricHelper.isBiometricReady(),
                     authManager = authManager,
                     isRemoteCodeSetUp = remoteCodes.isSetUp(),
+                    isCallSupported = canMakeCalls(),
                     onRedeemCode = { code -> redeemRemoteCode(code, lockReason) }
                 )
                 authMethod?.let { method ->
@@ -256,6 +262,9 @@ class CurfewLockActivity : FragmentActivity() {
     override fun onStop() {
         super.onStop()
         isShowing = false
+        if (shouldEnforceFront()) {
+            bringToFront()
+        }
     }
 
     override fun onDestroy() {
@@ -312,6 +321,7 @@ class CurfewLockActivity : FragmentActivity() {
             try {
                 am?.moveTaskToFront(taskId, ActivityManager.MOVE_TASK_NO_USER_ACTION)
             } catch (_: Exception) {}
+            bringToFront()
         }
     }
 
@@ -331,6 +341,12 @@ class CurfewLockActivity : FragmentActivity() {
         // Strictly consume back press - lock screen cannot be dismissed via back key
     }
 
+    private fun canMakeCalls(): Boolean {
+        return packageManager.hasSystemFeature(PackageManager.FEATURE_TELEPHONY) ||
+                Intent(Intent.ACTION_DIAL).resolveActivity(packageManager) != null ||
+                Intent("com.android.phone.EmergencyDialer.DIAL").resolveActivity(packageManager) != null
+    }
+
     /** Android's own emergency dialer: knows the local number (112/911/995…) and works without a SIM. */
     private fun launchEmergencyDialer() {
         PhoneGuard.allowExternalCommunicationWindow(30_000L)
@@ -338,7 +354,11 @@ class CurfewLockActivity : FragmentActivity() {
         try {
             startActivity(emergency)
         } catch (_: Exception) {
-            startActivity(Intent(Intent.ACTION_DIAL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            try {
+                startActivity(Intent(Intent.ACTION_DIAL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (_: Exception) {
+                Toast.makeText(this, str(R.string.unable_to_open_phone_dialer), Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -346,7 +366,11 @@ class CurfewLockActivity : FragmentActivity() {
         val number = ShieldApplication.instance.preferencesRepository.getCurfewPolicy().emergencyPhoneNumber
         if (number.isBlank()) return
         PhoneGuard.allowExternalCommunicationWindow(30_000L)
-        startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$number")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        try {
+            startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$number")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: Exception) {
+            Toast.makeText(this, str(R.string.unable_to_open_phone_dialer), Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun launchExtensionSms() {
@@ -400,6 +424,7 @@ fun CurfewLockScreen(
     isFingerprintAvailable: Boolean,
     authManager: ParentAuthManager,
     isRemoteCodeSetUp: Boolean,
+    isCallSupported: Boolean = true,
     onRedeemCode: (String) -> String?
 ) {
     var showPinDialog by remember { mutableStateOf(false) }
@@ -435,7 +460,9 @@ fun CurfewLockScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(canvasBg)
-            .padding(horizontal = 24.dp, vertical = 32.dp),
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp, vertical = 16.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -610,7 +637,7 @@ fun CurfewLockScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 val parentNumber = remember { ShieldApplication.instance.preferencesRepository.getCurfewPolicy().emergencyPhoneNumber }
-                if (parentNumber.isNotBlank()) {
+                if (isCallSupported && parentNumber.isNotBlank()) {
                     TextButton(onClick = onCallParent, modifier = Modifier.heightIn(min = 48.dp)) {
                         Icon(Icons.Default.Phone, contentDescription = null, tint = Shield.colors.primary, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
@@ -618,24 +645,26 @@ fun CurfewLockScreen(
                     }
                 }
 
-                // Button 4: Emergency Calls
-                TextButton(
-                    onClick = onEmergencyCall,
-                    colors = ButtonDefaults.textButtonColors(contentColor = Shield.colors.error)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Phone,
-                        contentDescription = str(R.string.emergency),
-                        tint = Shield.colors.error,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = str(R.string.emergency_calls_2),
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
-                        color = Shield.colors.error
-                    )
+                // Button 4: Emergency Calls (only shown if phone/dialer is supported on this hardware)
+                if (isCallSupported) {
+                    TextButton(
+                        onClick = onEmergencyCall,
+                        colors = ButtonDefaults.textButtonColors(contentColor = Shield.colors.error)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Phone,
+                            contentDescription = str(R.string.emergency),
+                            tint = Shield.colors.error,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = str(R.string.emergency_calls_2),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = Shield.colors.error
+                        )
+                    }
                 }
             }
         }

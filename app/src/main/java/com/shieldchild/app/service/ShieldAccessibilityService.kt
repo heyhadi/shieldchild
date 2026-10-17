@@ -187,7 +187,7 @@ class ShieldAccessibilityService : AccessibilityService() {
         if (reason != null) {
             // Curfew is active: ensure CurfewLockActivity stays on top
             if (foregroundPkg != packageName && foregroundPkg != "com.shieldchild.app.ui.curfew.CurfewLockActivity") {
-                CurfewLockLauncher.launch(this, reason)
+                CurfewLockLauncher.launch(this, reason, force = true)
             }
         }
     }

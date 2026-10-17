@@ -37,10 +37,10 @@ object CurfewLockLauncher {
      * 1. Direct Activity Intent with top/front flags.
      * 2. High-priority FullScreenIntent Notification (required by Android 10+ to break through background blocks on reboot).
      */
-    fun launch(context: Context, reason: LockReason) {
+    fun launch(context: Context, reason: LockReason, force: Boolean = false) {
         if (!ProfileGuard.isScreenInteractiveForProfile(context)) return
-        // Already on screen: relaunching would only re-post the notification over it.
-        if (CurfewLockActivity.isShowing) return
+        // Already on screen: relaunching would only re-post the notification over it unless forced.
+        if (CurfewLockActivity.isShowing && !force) return
         val lockIntent = Intent(context, CurfewLockActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or

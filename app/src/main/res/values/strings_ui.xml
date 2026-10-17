@@ -235,6 +235,7 @@
     <string name="min_given">+%1$s min given</string>
     <string name="my_phone_is_locked_can">My phone is locked. Can I please have 15 more minutes? - %1$s</string>
     <string name="unable_to_open_sms_messaging">Unable to open SMS messaging app.</string>
+    <string name="unable_to_open_phone_dialer">Unable to open phone dialer app.</string>
     <string name="downtime_active">Downtime Active</string>
     <string name="bedtime_curfew">Bedtime Curfew</string>
     <string name="device_paused">Device Paused</string>
