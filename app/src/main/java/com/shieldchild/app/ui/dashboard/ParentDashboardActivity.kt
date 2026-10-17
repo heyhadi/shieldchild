@@ -552,7 +552,7 @@ fun ReleaseOverviewScreen(
             val lastCheck = repo.getLastUpdateCheckTime()
             val cached = repo.getCachedUpdate()
 
-            // If installed build caught up to or exceeded cached build, clean it up
+            // Clean up stale cache if installed build caught up
             if (cached != null && cached.build <= installedBuild) {
                 repo.setCachedUpdate(null)
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -564,30 +564,22 @@ fun ReleaseOverviewScreen(
                 }
             }
 
-            val hasActiveCached = cached != null && cached.build > installedBuild
-            val fifteenMinutesMs = 15 * 60 * 1000L
-            val fourHoursMs = 4 * 60 * 60 * 1000L
-            val shouldCheck = lastCheck == 0L ||
-                (!hasActiveCached && now - lastCheck > fifteenMinutesMs) ||
-                (now - lastCheck > fourHoursMs)
-
-            if (shouldCheck) {
-                try {
-                    val update = updateManager.checkForUpdate()
-                    repo.setLastUpdateCheckTime(now)
-                    repo.setCachedUpdate(update)
-                    if (update != null && !repo.isUpdateBannerDismissedForBuild(update.build)) {
-                        withContext(kotlinx.coroutines.Dispatchers.Main) {
-                            availableUpdate = update
-                        }
-                    } else if (update == null) {
-                        withContext(kotlinx.coroutines.Dispatchers.Main) {
-                            availableUpdate = null
-                        }
+            // Check GitHub on mount (like in wird's UpdateCard)
+            try {
+                val update = updateManager.checkForUpdate()
+                repo.setLastUpdateCheckTime(System.currentTimeMillis())
+                repo.setCachedUpdate(update)
+                if (update != null && !repo.isUpdateBannerDismissedForBuild(update.build)) {
+                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        availableUpdate = update
                     }
-                } catch (_: Exception) {
-                    // Silently ignore GitHub check failures on Overview
+                } else if (update == null) {
+                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        availableUpdate = null
+                    }
                 }
+            } catch (_: Exception) {
+                // Silently ignore GitHub check failures on Overview (offline, rate-limited)
             }
         }
     }
