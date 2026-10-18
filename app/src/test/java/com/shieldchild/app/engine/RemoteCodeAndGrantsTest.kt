@@ -133,6 +133,17 @@ class RemoteCodeAndGrantsTest {
     }
 
     @Test
+    fun sessionClosedHoursLateOnlyExcludesUntilItExpired() {
+        AccessGrants.startParentSession(context, repo, GrantMethod.PIN)
+        uptime += 2 * 60_000
+        repo.touchParentSession()
+        // Service was killed; the expired session is only closed 5 hours later.
+        uptime += 5 * 60 * 60_000L
+        repo.endParentSession()
+        assertEquals(7L, repo.getParentUsedMinutesToday()) // last touch at 2 min + 5 min idle
+    }
+
+    @Test
     fun grantMinutesWithLockedPackagePausesAppLimit() {
         val appPkg = "com.google.android.youtube"
         val grantDuration = 20L

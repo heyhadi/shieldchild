@@ -267,7 +267,11 @@ class PreferencesRepository(
         if (start <= 0L) return
         val sameBoot = prefs.getInt(KEY_PARENT_SESSION_BOOT, -1) == bootCount()
         val now = elapsedRealtime()
-        val usedMs = if (sameBoot && now >= start) now - start else 0L
+        // A session closed late (service killed, phone asleep) still only lasted until it expired;
+        // counting up to "now" excluded hours of the child's own screen time.
+        val lastTouch = prefs.getLong(KEY_PARENT_SESSION_TOUCH, start)
+        val end = minOf(now, start + PARENT_SESSION_MAX_MS, lastTouch + PARENT_SESSION_IDLE_MS)
+        val usedMs = if (sameBoot && end >= start) end - start else 0L
         resetDailyCountersIfNewDay()
         prefs.edit()
             .putLong(KEY_PARENT_EXCLUDED_MS, prefs.getLong(KEY_PARENT_EXCLUDED_MS, 0L) + usedMs)
