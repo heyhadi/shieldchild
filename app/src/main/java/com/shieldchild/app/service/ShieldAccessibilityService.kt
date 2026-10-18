@@ -96,8 +96,7 @@ class ShieldAccessibilityService : AccessibilityService() {
                         val matchesShield = root.findAccessibilityNodeInfosByText("ShieldChild")
                         val matchesPkg = root.findAccessibilityNodeInfosByText("com.shieldchild.app")
                         if (!matchesShield.isNullOrEmpty() || !matchesPkg.isNullOrEmpty()) {
-                            performGlobalAction(GLOBAL_ACTION_HOME)
-                            CurfewLockLauncher.launch(this, LockReason.PARENT_INSTANT_FREEZE)
+                            deflectAndLock()
                             return
                         }
                     }
@@ -114,8 +113,7 @@ class ShieldAccessibilityService : AccessibilityService() {
                     )
                     val classMatch = highRiskClasses.any { cls.contains(it, ignoreCase = true) }
                     if (classMatch) {
-                        performGlobalAction(GLOBAL_ACTION_HOME)
-                        CurfewLockLauncher.launch(this, LockReason.PARENT_INSTANT_FREEZE)
+                        deflectAndLock()
                         return
                     }
 
@@ -131,8 +129,7 @@ class ShieldAccessibilityService : AccessibilityService() {
                             !root.findAccessibilityNodeInfosByText(it).isNullOrEmpty()
                         }
                         if (textMatch) {
-                            performGlobalAction(GLOBAL_ACTION_HOME)
-                            CurfewLockLauncher.launch(this, LockReason.PARENT_INSTANT_FREEZE)
+                            deflectAndLock()
                             return
                         }
                     }
@@ -234,6 +231,19 @@ class ShieldAccessibilityService : AccessibilityService() {
         } catch (_: Exception) {
             emptySet()
         }
+    }
+
+    /**
+     * Home is handled asynchronously; launching the lock at the same moment let Home land on top
+     * of it, so the child was only bounced to the launcher. Show the lock once Home has settled.
+     * Instant lock is saved because the lock screen closes itself when no saved rule applies.
+     */
+    private fun deflectAndLock() {
+        ShieldApplication.instance.preferencesRepository.setInstantLock(true)
+        performGlobalAction(GLOBAL_ACTION_HOME)
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            CurfewLockLauncher.launch(this, LockReason.PARENT_INSTANT_FREEZE)
+        }, 400L)
     }
 
     override fun onInterrupt() {
