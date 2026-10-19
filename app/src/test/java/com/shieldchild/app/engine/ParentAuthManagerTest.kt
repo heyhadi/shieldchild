@@ -32,6 +32,14 @@ class ParentAuthManagerTest {
     }
 
     @Test
+    fun emptyPinOrRecoveryKeyIsRejectedNotACrash() {
+        auth.setMasterPin("4829")
+        auth.generateRecoveryKey()
+        assertTrue(auth.verifyPin("") is AuthResult.InvalidPin)
+        assertFalse(auth.recoverWithMasterKey(" - ", "1234"))
+    }
+
+    @Test
     fun locksOutAfterFiveWrongPins() {
         auth.setMasterPin("4829")
         repeat(4) { auth.verifyPin("0000") }
