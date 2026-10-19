@@ -103,6 +103,7 @@ class ParentAuthManager(private val repository: PreferencesRepository) {
     }
 
     private fun matches(secret: String, storedHash: String, salt: String): Boolean {
+        if (secret.isEmpty()) return false // PBKDF2 throws "password empty" and crashed the PIN gate
         val computed = if (storedHash.startsWith(PBKDF2_PREFIX)) hashSecret(secret, salt) else legacySha256(secret, salt)
         return MessageDigest.isEqual(storedHash.toByteArray(), computed.toByteArray())
     }
