@@ -85,6 +85,7 @@ class CurfewLockActivity : FragmentActivity() {
 
         setupLockWindowFlags()
         tryEnterLockTaskMode()
+        holdAudioFocus()
 
         readIntentExtras(intent)
 
@@ -272,9 +273,37 @@ class CurfewLockActivity : FragmentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        audioFocus?.let { audioManager.abandonAudioFocusRequest(it) }
+        audioFocus = null
         if (currentInstance?.get() === this) {
             currentInstance = null
         }
+    }
+
+    private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager }
+    private var audioFocus: android.media.AudioFocusRequest? = null
+
+    /**
+     * A picture-in-picture player (e.g. YouTube) floats above this screen and no app can close it.
+     * Taking media audio focus makes players pause; if the child presses play and the player takes
+     * focus back, we take it again so it pauses again. Calls are unaffected: focus requests fail during a call.
+     */
+    private fun holdAudioFocus() {
+        val request = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(
+                android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MOVIE)
+                    .build()
+            )
+            .setOnAudioFocusChangeListener { change ->
+                if (change == android.media.AudioManager.AUDIOFOCUS_LOSS && !isUnlocked && !isFinishing) {
+                    window.decorView.postDelayed({ audioFocus?.let { audioManager.requestAudioFocus(it) } }, 300L)
+                }
+            }
+            .build()
+        audioFocus = request
+        audioManager.requestAudioFocus(request)
     }
 
     override fun onResume() {
