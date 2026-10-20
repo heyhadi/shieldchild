@@ -89,6 +89,16 @@ object AccessGrants {
         recheck(context)
     }
 
+    /**
+     * Dashboard "+ bonus": raises today's limit. Clears the saved limit-reached flag so the
+     * accessibility and boot paths don't relock with it; the recheck sets it again if still over.
+     */
+    fun addBonusMinutes(context: Context, repo: PreferencesRepository, minutes: Long) {
+        repo.addBonusMinutes(minutes)
+        repo.setDailyLimitExceededToday(false)
+        recheck(context)
+    }
+
     fun turnOffInstantLock(
         context: Context,
         repo: PreferencesRepository,

@@ -446,7 +446,7 @@ fun ReleaseParentDashboardScreen(
                     usedMinutesToday = usageSummary.totalDeviceUsageMinutes,
                     onNavigateToAppLimits = { selectedTab = ReleaseNavTab.APP_LIMITS },
                     onAddBonus = { minutes ->
-                        repo.addBonusMinutes(minutes)
+                        com.shieldchild.app.engine.AccessGrants.addBonusMinutes(context, repo, minutes)
                         policy = repo.getCurfewPolicy()
                     },
                     onRemoveBonus = {

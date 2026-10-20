@@ -20,8 +20,8 @@ class PolicyEngine {
         calendar: Calendar = Calendar.getInstance(),
         access: AccessState = AccessState()
     ): LockState {
-        // A parent session lifts whole-phone locks only (via evaluateDeviceLock below);
-        // blocked and used-up apps stay locked in case the phone is handed back unlocked.
+        // A parent session lifts whole-phone locks and used-up apps, so "Use the phone myself"
+        // on an app lock opens that app. Blocked apps stay blocked until a parent unblocks them.
 
         val deviceLockReason = evaluateDeviceLock(
             policy = policy,
@@ -42,7 +42,8 @@ class PolicyEngine {
         val limit = foregroundPackage?.let { appLimits[it] }
         if (foregroundPackage != null && limit != null) {
             val usedMinutes = usageSummary.perAppUsageMinutes[foregroundPackage] ?: 0L
-            val isUsedUp = foregroundPackage !in access.pausedApps && limit.dailyLimitMinutes in 1..usedMinutes
+            val isUsedUp = !access.isParentSession && foregroundPackage !in access.pausedApps &&
+                limit.dailyLimitMinutes in 1..usedMinutes
 
             if (!limit.isEssential && (limit.isBlocked || isUsedUp)) {
                 return LockState.SingleAppLock(

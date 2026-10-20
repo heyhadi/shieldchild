@@ -103,13 +103,86 @@ class LockFlowTest {
         assertEquals(youtube, ForegroundTracker.reportedPackage(youtube, own, isAppLockOverlayShowing = true))
     }
 
-    private fun appLock(usedMinutes: Long, fg: String = youtube, appLimits: Map<String, AppLimit> = limits): LockState = engine.evaluateLockState(
+    // --- Picture-in-picture over Home (bug: overlay covers Home, "Go to Home" loops) ---
+
+    private val launcher = "com.android.launcher3"
+    private val limited = setOf(youtube)
+
+    @Test
+    fun lockedAppInPipOverHomeIsClosedNotReported() {
+        val windows = listOf(ScreenWindow(launcher, false), ScreenWindow(youtube, true))
+        val decision = HomeWindows.decide(launcher, windows, limited, isLocked = { true })
+        assertEquals(launcher, decision.reportedPackage)
+        assertEquals(youtube, decision.closePipPackage)
+        // With Home reported, there's no app lock for the overlay to show over the launcher.
+        assertEquals(LockState.Unlocked, appLock(usedMinutes = 45, fg = decision.reportedPackage))
+    }
+
+    @Test
+    fun appInPipWithTimeLeftKeepsPlaying() {
+        val windows = listOf(ScreenWindow(launcher, false), ScreenWindow(youtube, true))
+        assertEquals(HomeDecision(launcher, null), HomeWindows.decide(launcher, windows, limited, isLocked = { false }))
+    }
+
+    @Test
+    fun limitedAppBesideHomeInSplitScreenIsStillReported() {
+        val windows = listOf(ScreenWindow(launcher, false), ScreenWindow(youtube, false))
+        assertEquals(HomeDecision(youtube, null), HomeWindows.decide(launcher, windows, limited, isLocked = { true }))
+    }
+
+    // --- "Use the phone myself" on an app lock (bug: overlay returns at once) ---
+
+    @Test
+    fun parentSessionOpensTheUsedUpApp() {
+        // The lock screen closes for a parent session; the engine must agree or the overlay returns.
+        AccessGrants.startParentSession(context, repo, GrantMethod.PIN)
+        assertTrue(repo.getAccessState().isParentSession)
+        assertEquals(LockState.Unlocked, appLock(usedMinutes = 45, access = repo.getAccessState()))
+    }
+
+    @Test
+    fun parentSessionNeverUnblocksABlockedApp() {
+        val blocked = mapOf(youtube to AppLimit(youtube, "YouTube", dailyLimitMinutes = 0, isBlocked = true))
+        AccessGrants.startParentSession(context, repo, GrantMethod.PIN)
+        val state = appLock(usedMinutes = 0, appLimits = blocked, access = repo.getAccessState())
+        assertTrue(state is LockState.SingleAppLock && state.isBlocked)
+    }
+
+    @Test
+    fun usedUpAppLocksAgainWhenParentSessionEnds() {
+        AccessGrants.startParentSession(context, repo, GrantMethod.PIN)
+        AccessGrants.endParentSession(context, repo)
+        assertTrue(appLock(usedMinutes = 45, access = repo.getAccessState()) is LockState.SingleAppLock)
+    }
+
+    // --- Dashboard "+ bonus" (bug: stale limit-reached flag relocks briefly) ---
+
+    @Test
+    fun dashboardBonusClearsTheLimitReachedFlag() {
+        repo.setDailyLimitExceededToday(true)
+        val before = repo.getCurfewPolicy().bonusMinutesToday
+        AccessGrants.addBonusMinutes(context, repo, 15)
+        assertEquals(before + 15, repo.getCurfewPolicy().bonusMinutesToday)
+        assertTrue(!repo.isDailyLimitExceededToday())
+        assertNull(CurfewLockLauncher.evaluateRebootLockReason(
+            policy = repo.getCurfewPolicy().copy(isCurfewScheduled = false),
+            isDailyExceeded = repo.isDailyLimitExceededToday(),
+            access = repo.getAccessState()
+        ))
+    }
+
+    private fun appLock(
+        usedMinutes: Long,
+        fg: String = youtube,
+        appLimits: Map<String, AppLimit> = limits,
+        access: com.shieldchild.app.data.AccessState = repo.getAccessState(now)
+    ): LockState = engine.evaluateLockState(
         policy = repo.getCurfewPolicy().copy(isCurfewScheduled = false),
         appLimits = appLimits,
         usageSummary = DailyUsageSummary(totalDeviceUsageMinutes = 0, perAppUsageMinutes = mapOf(youtube to usedMinutes)),
         foregroundPackage = fg,
         calendar = bedtime,
-        access = repo.getAccessState(now)
+        access = access
     )
 
     private fun deviceLock(): LockReason? =
