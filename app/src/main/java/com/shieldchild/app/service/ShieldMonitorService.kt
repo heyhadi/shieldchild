@@ -270,6 +270,7 @@ class ShieldMonitorService : Service() {
                 }
             }
             is LockState.SingleAppLock -> {
+                ShieldAccessibilityService.recheckBesideHome()
                 if (fgPkg != packageName) onMain {
                     overlayManager.showAppLock(
                         packageName = lockState.packageName,
@@ -282,7 +283,7 @@ class ShieldMonitorService : Service() {
             }
             is LockState.Unlocked -> {
                 onMain { overlayManager.dismiss() }
-                fgPkg?.let { ShieldAccessibilityService.recheckBesideHome(it) }
+                ShieldAccessibilityService.recheckBesideHome()
                 com.shieldchild.app.engine.CurfewLockLauncher.dismissLockNotification(this)
             }
         }
