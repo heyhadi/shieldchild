@@ -183,9 +183,12 @@ class ShieldAccessibilityService : AccessibilityService() {
                     } catch (_: Exception) {}
                 }
 
+                val foreground = com.shieldchild.app.engine.ForegroundTracker.reportedPackage(
+                    reportedPackage, packageName, com.shieldchild.app.overlay.AppShieldOverlayManager.isShowing
+                ) ?: return
                 val intent = Intent(this, ShieldMonitorService::class.java).apply {
                     action = ShieldMonitorService.ACTION_FOREGROUND_PACKAGE_CHANGED
-                    putExtra(ShieldMonitorService.EXTRA_PACKAGE_NAME, reportedPackage)
+                    putExtra(ShieldMonitorService.EXTRA_PACKAGE_NAME, foreground)
                 }
                 try {
                     startService(intent)

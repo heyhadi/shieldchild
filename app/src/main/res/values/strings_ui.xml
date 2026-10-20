@@ -313,6 +313,7 @@
     <string name="the_idea_why_it_would">**The idea**\n\n\n**Why it would help**\n\n\n---\n%1$s\n</string>
     <string name="is_on_pause">%1$s is on Pause</string>
     <string name="you_ve_reached_your_min">You\'ve reached your %1$s min daily limit on this app.</string>
+    <string name="app_blocked_by_parent">Your parent has blocked this app.</string>
     <string name="go_to_home_screen">Go to Home Screen</string>
     <string name="parent_unlock_add_time">Parent Unlock / Add Time</string>
     <string name="shieldchild_protection_active">ShieldChild Protection Active</string>

@@ -286,7 +286,8 @@ class ShieldMonitorService : Service() {
                         packageName = lockState.packageName,
                         appName = lockState.appName,
                         limitMinutes = lockState.limitMinutes,
-                        usedMinutes = lockState.usedMinutes
+                        usedMinutes = lockState.usedMinutes,
+                        isBlocked = lockState.isBlocked
                     )
                 }
             }
