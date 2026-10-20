@@ -280,7 +280,8 @@ class ShieldAccessibilityService : AccessibilityService() {
             launcherPackage = launcherPkg,
             windows = seen.map { it.first },
             limitedApps = snapshot.appLimits.keys,
-            isLocked = { pkg -> com.shieldchild.app.engine.LockDecider.isAppLocked(snapshot, pkg) }
+            isLocked = { pkg -> com.shieldchild.app.engine.LockDecider.isAppLocked(snapshot, pkg) },
+            resumedLast = isLastResumed(launcherPkg)
         )
         decision.closePipPackage?.let { pkg ->
             seen.firstOrNull { it.first.packageName == pkg && it.first.isPictureInPicture }?.second?.let { closePictureInPicture(it) }

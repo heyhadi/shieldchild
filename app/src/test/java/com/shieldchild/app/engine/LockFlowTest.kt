@@ -131,6 +131,14 @@ class LockFlowTest {
     }
 
     @Test
+    fun appLeavingForHomeIsNotReportedAsBesideIt() {
+        // Bug: right after Home, the app's window is still listed while it animates away.
+        val windows = listOf(ScreenWindow(youtube, false), ScreenWindow(launcher, false))
+        val decision = HomeWindows.decide(launcher, windows, limited, isLocked = { true }, resumedLast = true)
+        assertEquals(HomeDecision(launcher, null), decision)
+    }
+
+    @Test
     fun pipWindowEventOverHomeMeansHomeNotTheApp() {
         // Bug: after a parent session, tapping the PiP put YouTube's lock over Home.
         val launchers = setOf(launcher)
