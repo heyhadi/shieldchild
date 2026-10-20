@@ -409,4 +409,6 @@
     <string name="essential_app_desc">Bisa dibuka dari layar kunci saat waktu habis</string>
     <string name="allow_in_bedtime">Izinkan juga saat Jam Tidur</string>
     <string name="essential_badge">Penting</string>
+    <string name="one_minute_less">Kurangi satu menit</string>
+    <string name="one_minute_more">Tambah satu menit</string>
 </resources>

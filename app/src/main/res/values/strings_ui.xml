@@ -414,4 +414,6 @@
     <string name="essential_app_desc">Available on the lock screen when screen time runs out</string>
     <string name="allow_in_bedtime">Allow during Bedtime too</string>
     <string name="essential_badge">Essential</string>
+    <string name="one_minute_less">One minute less</string>
+    <string name="one_minute_more">One minute more</string>
 </resources>

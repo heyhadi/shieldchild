@@ -72,6 +72,7 @@ import com.shieldchild.app.engine.BiometricAuthHelper
 import com.shieldchild.app.engine.ParentAuthManager
 import com.shieldchild.app.engine.AppDiscoveryManager
 import com.shieldchild.app.engine.DiscoveredApp
+import com.shieldchild.app.engine.LimitScale
 import com.shieldchild.app.engine.UsageMonitor
 import com.shieldchild.app.engine.PolicyEngine
 import com.shieldchild.app.engine.RemoteCodeManager
@@ -1446,19 +1447,11 @@ fun ReleaseAppLimitsScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Slider(
-                                    value = app.dailyLimitMinutes.coerceAtLeast(15L).toFloat(),
-                                    onValueChange = { newLimit ->
-                                        onUpdateLimit(app.copy(dailyLimitMinutes = newLimit.toLong()))
-                                    },
-                                    valueRange = 15f..180f,
-                                    steps = 10,
-                                    modifier = Modifier.weight(1f),
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = colPrimary,
-                                        activeTrackColor = colPrimary,
-                                        inactiveTrackColor = colLineSubtle
-                                    )
+                                LimitStepper(
+                                    minutes = app.dailyLimitMinutes,
+                                    scale = LimitScale.APP,
+                                    onChange = { onUpdateLimit(app.copy(dailyLimitMinutes = it)) },
+                                    modifier = Modifier.weight(1f)
                                 )
                                 Text(
                                     text = str(R.string.min, app.dailyLimitMinutes),
@@ -1884,15 +1877,10 @@ fun ReleaseAppLimitsScreen(
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
-                                Slider(
-                                    value = configureLimitMinutes.toFloat(),
-                                    onValueChange = { configureLimitMinutes = it.toLong() },
-                                    valueRange = 15f..180f,
-                                    steps = 10,
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = colPrimary,
-                                        activeTrackColor = colPrimary
-                                    ),
+                                LimitStepper(
+                                    minutes = configureLimitMinutes,
+                                    scale = LimitScale.APP,
+                                    onChange = { configureLimitMinutes = it },
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }
@@ -2056,18 +2044,11 @@ fun ReleaseCurfewScreen(
                             fontWeight = FontWeight.ExtraBold,
                             color = colPrimary
                         )
-                        Slider(
-                            value = policy.dailyTotalLimitMinutes.toFloat(),
-                            onValueChange = { newLimit ->
-                                onUpdatePolicy(policy.copy(dailyTotalLimitMinutes = newLimit.toLong()))
-                            },
-                            valueRange = 30f..360f,
-                            steps = 10,
-                            colors = SliderDefaults.colors(
-                                thumbColor = colPrimary,
-                                activeTrackColor = colPrimary,
-                                inactiveTrackColor = colLineSubtle
-                            )
+                        LimitStepper(
+                            minutes = policy.dailyTotalLimitMinutes,
+                            scale = LimitScale.DAILY_TOTAL,
+                            onChange = { onUpdatePolicy(policy.copy(dailyTotalLimitMinutes = it)) },
+                            modifier = Modifier.fillMaxWidth()
                         )
 
                         Spacer(modifier = Modifier.height(14.dp))
@@ -4019,6 +4000,47 @@ fun RemoteCodeSetupDialog(
         Spacer(modifier = Modifier.height(8.dp))
         PinField(value = code, onValueChange = { code = it; error = null }, label = str(R.string.label_6_digit_code), maxLength = 6, hidden = false)
         DialogError(error)
+    }
+}
+
+/** Coarse slider plus −/+ buttons that move one minute at a time, so any exact limit can be set. */
+@Composable
+private fun LimitStepper(
+    minutes: Long,
+    scale: LimitScale,
+    onChange: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        IconButton(
+            onClick = { onChange(scale.nudge(minutes, -1L)) },
+            enabled = scale.canDecrease(minutes),
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(Icons.Default.Remove, contentDescription = str(R.string.one_minute_less), tint = if (scale.canDecrease(minutes)) Shield.colors.primary else Shield.colors.line)
+        }
+        Slider(
+            value = scale.sliderPosition(minutes),
+            onValueChange = { raw ->
+                val snapped = scale.fromSlider(raw)
+                if (snapped != minutes) onChange(snapped)
+            },
+            valueRange = scale.sliderRange,
+            steps = scale.sliderSteps,
+            modifier = Modifier.weight(1f),
+            colors = SliderDefaults.colors(
+                thumbColor = Shield.colors.primary,
+                activeTrackColor = Shield.colors.primary,
+                inactiveTrackColor = Shield.colors.line
+            )
+        )
+        IconButton(
+            onClick = { onChange(scale.nudge(minutes, +1L)) },
+            enabled = scale.canIncrease(minutes),
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(Icons.Default.Add, contentDescription = str(R.string.one_minute_more), tint = if (scale.canIncrease(minutes)) Shield.colors.primary else Shield.colors.line)
+        }
     }
 }
 
