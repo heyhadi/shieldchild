@@ -17,6 +17,13 @@ The app applies them in one place, `engine/LockDecider`: every part that locks a
 
 1–3 lock the whole phone; only the strongest one that applies is shown. Essential apps never get an app lock.
 
+## What counts as use
+
+- An app is in use while it is on screen, including in picture-in-picture: a video playing in a
+  small window over Home or over another app counts toward that app's limit until the window closes.
+- The phone's daily total is time with any app on screen, so a PiP over another app counts once.
+  The home screen, ShieldChild, System UI and keyboards don't count. Screen off doesn't count.
+
 ## What each parent action lifts
 
 | Parent action | Instant lock | Bedtime | Daily limit | App blocked | App out of time | How long |
