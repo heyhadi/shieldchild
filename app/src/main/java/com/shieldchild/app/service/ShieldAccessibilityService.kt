@@ -165,21 +165,9 @@ class ShieldAccessibilityService : AccessibilityService() {
                     pkgName
                 }
                 val homeLaunchers = getHomeLauncherPackages()
-                if (pkgName in homeLaunchers && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                if (pkgName in homeLaunchers) {
                     try {
-                        val activeWindows = windows
-                        if (activeWindows != null) {
-                            val appLimits = repo.getAppLimits()
-                            for (win in activeWindows) {
-                                if (win.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION) {
-                                    val winPkg = win.root?.packageName?.toString()
-                                    if (winPkg != null && winPkg != pkgName && appLimits.containsKey(winPkg)) {
-                                        reportedPackage = winPkg
-                                        break
-                                    }
-                                }
-                            }
-                        }
+                        reportedPackage = handleWindowsBesideHome(pkgName, repo)
                     } catch (_: Exception) {}
                 }
 
@@ -224,6 +212,45 @@ class ShieldAccessibilityService : AccessibilityService() {
                 CurfewLockLauncher.launch(this, reason)
             }
         }
+    }
+
+    /** Returns the app to report while Home has focus, closing a locked app's picture-in-picture. */
+    private fun handleWindowsBesideHome(launcherPkg: String, repo: com.shieldchild.app.data.PreferencesRepository): String {
+        val appWindows = (windows ?: emptyList()).filter {
+            it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION
+        }
+        val seen = appWindows.mapNotNull { win ->
+            val pkg = win.root?.packageName?.toString() ?: return@mapNotNull null
+            com.shieldchild.app.engine.ScreenWindow(pkg, win.isInPictureInPictureMode) to win
+        }
+        val appLimits = repo.getAppLimits()
+        val decision = com.shieldchild.app.engine.HomeWindows.decide(
+            launcherPackage = launcherPkg,
+            windows = seen.map { it.first },
+            limitedApps = appLimits.keys,
+            isLocked = { pkg ->
+                com.shieldchild.app.engine.PolicyEngine().evaluateLockState(
+                    policy = repo.getCurfewPolicy(),
+                    appLimits = appLimits,
+                    usageSummary = com.shieldchild.app.engine.UsageMonitor(this).queryDailyUsage(),
+                    foregroundPackage = pkg,
+                    access = repo.getAccessState()
+                ) is com.shieldchild.app.data.LockState.SingleAppLock
+            }
+        )
+        decision.closePipPackage?.let { pkg ->
+            seen.firstOrNull { it.first.packageName == pkg && it.first.isPictureInPicture }?.second?.let { closePictureInPicture(it) }
+        }
+        return decision.reportedPackage
+    }
+
+    /** Stops playback, then closes the window with the PiP "dismiss" action System UI provides. */
+    private fun closePictureInPicture(win: android.view.accessibility.AccessibilityWindowInfo) {
+        val audio = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+        val focus = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN).build()
+        audio.requestAudioFocus(focus)
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ audio.abandonAudioFocusRequest(focus) }, 1_000L)
+        win.root?.performAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_DISMISS.id)
     }
 
     private fun getHomeLauncherPackages(): Set<String> {
