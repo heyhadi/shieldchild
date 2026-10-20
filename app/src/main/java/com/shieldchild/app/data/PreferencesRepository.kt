@@ -436,7 +436,8 @@ class PreferencesRepository(
         saveAppLimits(limits.values)
     }
 
-    // --- Daily Limit Exceeded State Persistence (for Reboot Lock Enforcement) ---
+    // --- Whether the daily limit was the lock in force at the last check. Only parent grants read it
+    // (to know what they are lifting); lock decisions use LockDecider. ---
     fun isDailyLimitExceededToday(): Boolean {
         resetDailyCountersIfNewDay()
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
@@ -449,6 +450,19 @@ class PreferencesRepository(
         prefs.edit()
             .putString(KEY_LAST_RECORDED_DAY, todayStr)
             .putString(KEY_DAILY_LIMIT_EXCEEDED_DAY, if (exceeded) todayStr else "")
+            .apply()
+    }
+
+    // --- Last measured screen time, so boot and app start can decide before usage stats are readable ---
+    fun getSavedUsageMinutesToday(now: Long = System.currentTimeMillis()): Long {
+        val day = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(now))
+        return if (prefs.getString(KEY_SAVED_USAGE_DAY, "") == day) prefs.getLong(KEY_SAVED_USAGE_MINUTES, 0L) else 0L
+    }
+
+    fun saveUsageMinutesToday(minutes: Long, now: Long = System.currentTimeMillis()) {
+        prefs.edit()
+            .putString(KEY_SAVED_USAGE_DAY, SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(now)))
+            .putLong(KEY_SAVED_USAGE_MINUTES, minutes)
             .apply()
     }
 
@@ -538,6 +552,8 @@ class PreferencesRepository(
         private const val KEY_APP_LIMITS_JSON = "key_app_limits_json"
         private const val KEY_LAST_RECORDED_DAY = "key_last_recorded_day"
         private const val KEY_DAILY_LIMIT_EXCEEDED_DAY = "key_daily_limit_exceeded_day"
+        private const val KEY_SAVED_USAGE_DAY = "key_saved_usage_day"
+        private const val KEY_SAVED_USAGE_MINUTES = "key_saved_usage_minutes"
         private const val KEY_BEDTIME_PAUSED_UNTIL = "key_bedtime_paused_until"
         private const val KEY_LIMIT_PAUSED_UNTIL = "key_limit_paused_until"
         private const val KEY_INSTANT_PAUSED_UNTIL = "key_instant_paused_until"

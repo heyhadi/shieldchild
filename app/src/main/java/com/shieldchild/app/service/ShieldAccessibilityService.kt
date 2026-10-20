@@ -191,12 +191,8 @@ class ShieldAccessibilityService : AccessibilityService() {
         val repo = app.preferencesRepository
         if (!repo.isSetupCompleted()) return
 
-        val policy = repo.getCurfewPolicy()
-        val isDailyExceeded = repo.isDailyLimitExceededToday()
-        val reason = CurfewLockLauncher.evaluateRebootLockReason(
-            policy = policy,
-            isDailyExceeded = isDailyExceeded,
-            access = repo.getAccessState()
+        val reason = com.shieldchild.app.engine.LockDecider.deviceLock(
+            com.shieldchild.app.engine.LockDecider.snapshot(this, repo)
         )
 
         // Calls always win: never cover the dialer, an incoming call or the in-call screen.
@@ -223,20 +219,12 @@ class ShieldAccessibilityService : AccessibilityService() {
             val pkg = win.root?.packageName?.toString() ?: return@mapNotNull null
             com.shieldchild.app.engine.ScreenWindow(pkg, win.isInPictureInPictureMode) to win
         }
-        val appLimits = repo.getAppLimits()
+        val snapshot = com.shieldchild.app.engine.LockDecider.snapshot(this, repo)
         val decision = com.shieldchild.app.engine.HomeWindows.decide(
             launcherPackage = launcherPkg,
             windows = seen.map { it.first },
-            limitedApps = appLimits.keys,
-            isLocked = { pkg ->
-                com.shieldchild.app.engine.PolicyEngine().evaluateLockState(
-                    policy = repo.getCurfewPolicy(),
-                    appLimits = appLimits,
-                    usageSummary = com.shieldchild.app.engine.UsageMonitor(this).queryDailyUsage(),
-                    foregroundPackage = pkg,
-                    access = repo.getAccessState()
-                ) is com.shieldchild.app.data.LockState.SingleAppLock
-            }
+            limitedApps = snapshot.appLimits.keys,
+            isLocked = { pkg -> com.shieldchild.app.engine.LockDecider.isAppLocked(snapshot, pkg) }
         )
         decision.closePipPackage?.let { pkg ->
             seen.firstOrNull { it.first.packageName == pkg && it.first.isPictureInPicture }?.second?.let { closePictureInPicture(it) }
