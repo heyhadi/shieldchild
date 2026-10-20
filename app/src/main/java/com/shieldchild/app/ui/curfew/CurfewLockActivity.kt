@@ -347,7 +347,15 @@ class CurfewLockActivity : FragmentActivity() {
                 com.shieldchild.app.engine.ProfileGuard.isScreenInteractiveForProfile(this)
     }
 
+    // Our own bringToFront() intent briefly pauses this screen and takes its focus even when it is
+    // already in front; reacting to that with another bringToFront() restarted it ~10 times a second.
+    private var lastSelfLaunchAt = 0L
+
+    private fun isEchoOfOwnRelaunch(): Boolean =
+        android.os.SystemClock.uptimeMillis() - lastSelfLaunchAt < SELF_LAUNCH_ECHO_MS
+
     private fun bringToFront() {
+        lastSelfLaunchAt = android.os.SystemClock.uptimeMillis()
         val intent = Intent(this, CurfewLockActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
@@ -373,7 +381,8 @@ class CurfewLockActivity : FragmentActivity() {
             closeLock()
             return
         }
-        if (shouldEnforceFront()) {
+        // A real leave (Home, Recents, another app) also stops or hints, and those still enforce.
+        if (!isEchoOfOwnRelaunch() && shouldEnforceFront()) {
             val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
             try {
                 am?.moveTaskToFront(taskId, ActivityManager.MOVE_TASK_NO_USER_ACTION)
@@ -388,7 +397,7 @@ class CurfewLockActivity : FragmentActivity() {
             closeLock()
             return
         }
-        if (!hasFocus && shouldEnforceFront()) {
+        if (!hasFocus && !isEchoOfOwnRelaunch() && shouldEnforceFront()) {
             bringToFront()
         }
     }
@@ -538,6 +547,7 @@ class CurfewLockActivity : FragmentActivity() {
         const val EXTRA_LOCK_REASON = "extra_lock_reason"
         const val EXTRA_LOCKED_PACKAGE = "extra_locked_package"
         const val EXTRA_LOCKED_APP_NAME = "extra_locked_app_name"
+        private const val SELF_LAUNCH_ECHO_MS = 1_000L
 
         @Volatile
         var isShowing = false
