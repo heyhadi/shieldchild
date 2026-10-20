@@ -321,15 +321,19 @@ class CurfewLockActivity : FragmentActivity() {
         readIntentExtras(intent)
     }
 
+    private var hasLockState = false
+
     private fun readIntentExtras(intent: Intent?) {
-        lockedPackage = intent?.getStringExtra(EXTRA_LOCKED_PACKAGE)
-        lockedAppName = intent?.getStringExtra(EXTRA_LOCKED_APP_NAME)
-        val lockReasonStr = intent?.getStringExtra(EXTRA_LOCK_REASON) ?: LockReason.TOTAL_SCREEN_TIME_EXCEEDED.name
-        lockReason = try {
-            LockReason.valueOf(lockReasonStr)
-        } catch (_: Exception) {
-            LockReason.TOTAL_SCREEN_TIME_EXCEEDED
-        }
+        val state = com.shieldchild.app.engine.LockIntentState.from(
+            current = if (hasLockState) com.shieldchild.app.engine.LockIntentState(lockedPackage, lockedAppName, lockReason) else null,
+            lockedPackage = intent?.getStringExtra(EXTRA_LOCKED_PACKAGE),
+            lockedAppName = intent?.getStringExtra(EXTRA_LOCKED_APP_NAME),
+            reasonName = intent?.getStringExtra(EXTRA_LOCK_REASON)
+        )
+        hasLockState = true
+        lockedPackage = state.lockedPackage
+        lockedAppName = state.lockedAppName
+        lockReason = state.reason
         if (lockReason == LockReason.PARENT_INSTANT_FREEZE) {
             ShieldApplication.instance.preferencesRepository.endParentSession()
         }

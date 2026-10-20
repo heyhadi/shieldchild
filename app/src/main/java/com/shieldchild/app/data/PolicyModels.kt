@@ -60,7 +60,9 @@ sealed class LockState {
         val packageName: String,
         val appName: String,
         val limitMinutes: Long,
-        val usedMinutes: Long
+        val usedMinutes: Long,
+        /** Blocked by the parent rather than out of time: extra time can't open it. */
+        val isBlocked: Boolean = false
     ) : LockState()
 }
 

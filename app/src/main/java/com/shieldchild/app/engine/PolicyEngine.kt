@@ -38,16 +38,19 @@ class PolicyEngine {
         }
 
         // Priority 4: Individual App Limit Exceeded
-        if (foregroundPackage != null && foregroundPackage !in access.pausedApps && appLimits.containsKey(foregroundPackage)) {
-            val limit = appLimits[foregroundPackage]!!
+        // Extra time only lifts a used-up limit; a blocked app stays blocked until a parent unblocks it.
+        val limit = foregroundPackage?.let { appLimits[it] }
+        if (foregroundPackage != null && limit != null) {
             val usedMinutes = usageSummary.perAppUsageMinutes[foregroundPackage] ?: 0L
+            val isUsedUp = foregroundPackage !in access.pausedApps && limit.dailyLimitMinutes in 1..usedMinutes
 
-            if (!limit.isEssential && (limit.isBlocked || (limit.dailyLimitMinutes in 1..usedMinutes))) {
+            if (!limit.isEssential && (limit.isBlocked || isUsedUp)) {
                 return LockState.SingleAppLock(
                     packageName = foregroundPackage,
                     appName = limit.appName,
                     limitMinutes = limit.dailyLimitMinutes,
-                    usedMinutes = usedMinutes
+                    usedMinutes = usedMinutes,
+                    isBlocked = limit.isBlocked
                 )
             }
         }

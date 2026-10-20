@@ -309,6 +309,7 @@
     <string name="mit_license_made_by_heyhadi">Lisensi MIT · Dibuat oleh heyhadi</string>
     <string name="is_on_pause">%1$s sedang dijeda</string>
     <string name="you_ve_reached_your_min">Jatah %1$s menit untuk aplikasi ini hari ini sudah habis.</string>
+    <string name="app_blocked_by_parent">Orang tua telah memblokir aplikasi ini.</string>
     <string name="go_to_home_screen">Ke layar utama</string>
     <string name="parent_unlock_add_time">Buka oleh orang tua / Tambah waktu</string>
     <string name="shieldchild_protection_active">Perlindungan ShieldChild aktif</string>

@@ -25,7 +25,7 @@ class AppShieldOverlayManager(private val context: Context) {
         return overlayView != null && currentLockedPackage == packageName
     }
 
-    fun showAppLock(packageName: String, appName: String, limitMinutes: Long, usedMinutes: Long) {
+    fun showAppLock(packageName: String, appName: String, limitMinutes: Long, usedMinutes: Long, isBlocked: Boolean = false) {
         if (!com.shieldchild.app.engine.ProfileGuard.isScreenInteractiveForProfile(context)) {
             dismiss()
             return
@@ -54,11 +54,13 @@ class AppShieldOverlayManager(private val context: Context) {
         }
 
         // Programmatically build overlay or inflate
-        val view = createOverlayView(packageName, appName, limitMinutes, usedMinutes)
+        val view = createOverlayView(packageName, appName, limitMinutes, usedMinutes, isBlocked)
         try {
             windowManager.addView(view, layoutParams)
             overlayView = view
             currentLockedPackage = packageName
+            isShowing = true
+            holdAudioFocus()
         } catch (_: Exception) {}
     }
 
@@ -70,13 +72,47 @@ class AppShieldOverlayManager(private val context: Context) {
         }
         overlayView = null
         currentLockedPackage = null
+        isShowing = false
+        audioFocus?.let { audioManager.abandonAudioFocusRequest(it) }
+        audioFocus = null
+    }
+
+    private val audioManager by lazy { context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager }
+    private var audioFocus: android.media.AudioFocusRequest? = null
+
+    /** Same as the lock screen: taking media focus pauses the video under the overlay, and keeps it paused. */
+    private fun holdAudioFocus() {
+        if (audioFocus != null) return
+        val request = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(
+                android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MOVIE)
+                    .build()
+            )
+            .setOnAudioFocusChangeListener { change ->
+                if (change == android.media.AudioManager.AUDIOFOCUS_LOSS) {
+                    overlayView?.postDelayed({ audioFocus?.let { audioManager.requestAudioFocus(it) } }, 300L)
+                }
+            }
+            .build()
+        audioFocus = request
+        audioManager.requestAudioFocus(request)
+    }
+
+    companion object {
+        /** Read by the accessibility service: this overlay's own window events aren't an app switch. */
+        @Volatile
+        var isShowing = false
+            private set
     }
 
     private fun createOverlayView(
         packageName: String,
         appName: String,
         limitMinutes: Long,
-        usedMinutes: Long
+        usedMinutes: Long,
+        isBlocked: Boolean
     ): View {
         val root = object : android.widget.FrameLayout(context) {
             override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
@@ -120,7 +156,7 @@ class AppShieldOverlayManager(private val context: Context) {
         }
 
         val subtitleView = TextView(context).apply {
-            text = str(R.string.you_ve_reached_your_min, limitMinutes)
+            text = if (isBlocked) str(R.string.app_blocked_by_parent) else str(R.string.you_ve_reached_your_min, limitMinutes)
             textSize = 15f
             setTextColor(android.graphics.Color.parseColor("#B4BEB7")) // inkMuted
             gravity = Gravity.CENTER
@@ -164,7 +200,8 @@ class AppShieldOverlayManager(private val context: Context) {
         container.addView(titleView)
         container.addView(subtitleView)
         container.addView(btnHome)
-        container.addView(btnParent)
+        // Extra time can't open a blocked app; the parent unblocks it in the dashboard.
+        if (!isBlocked) container.addView(btnParent)
         root.addView(container)
 
         return root
