@@ -132,13 +132,8 @@ class ParentDashboardActivity : FragmentActivity() {
     private fun checkIfLockedAndRedirect() {
         val repo = ShieldApplication.instance.preferencesRepository
         if (repo.isSetupCompleted() && !isParentAuthenticatedState.value) {
-            val policy = repo.getCurfewPolicy()
-            val engine = PolicyEngine()
-            val usedMinutes = UsageMonitor(this).queryDailyUsage().totalDeviceUsageMinutes
-            val reason = engine.evaluateDeviceLock(
-                policy = policy,
-                isDailyLimitReached = engine.isDailyLimitReached(policy, usedMinutes),
-                access = repo.getAccessState()
+            val reason = com.shieldchild.app.engine.LockDecider.deviceLock(
+                com.shieldchild.app.engine.LockDecider.snapshot(this, repo)
             )
             if (reason != null) {
                 val intent = Intent(this, CurfewLockActivity::class.java).apply {

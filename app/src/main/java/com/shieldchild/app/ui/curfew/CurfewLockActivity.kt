@@ -99,30 +99,21 @@ class CurfewLockActivity : FragmentActivity() {
                         closeLock()
                         break
                     }
-                    val repo = ShieldApplication.instance.preferencesRepository
-                    val accessState = repo.getAccessState()
-                    if (lockedPackage != null) {
-                        if (accessState.isParentSession || lockedPackage in accessState.pausedApps) {
+                    val update = com.shieldchild.app.engine.LockDecider.lockScreenUpdate(
+                        lockSnapshot(), lockedPackage, parentChoosing = authMethod != null
+                    )
+                    when (update) {
+                        com.shieldchild.app.engine.LockScreenUpdate.Close -> {
                             closeLock()
                             break
                         }
-                    } else {
-                        val currentPolicy = repo.getCurfewPolicy()
-                        val effectiveAccess = if (currentPolicy.isInstantLocked) {
-                            accessState.copy(isParentSession = false)
-                        } else {
-                            accessState
+                        // The whole phone locked while an app lock was showing: show that instead.
+                        is com.shieldchild.app.engine.LockScreenUpdate.ShowDeviceLock -> {
+                            lockedPackage = null
+                            lockedAppName = null
+                            lockReason = update.reason
                         }
-                        val current = com.shieldchild.app.engine.CurfewLockLauncher.evaluateRebootLockReason(
-                            policy = currentPolicy,
-                            isDailyExceeded = repo.isDailyLimitExceededToday(),
-                            access = effectiveAccess
-                        )
-                        if (current == null && authMethod == null) {
-                            closeLock()
-                            break
-                        }
-                        if (current != null) lockReason = current
+                        com.shieldchild.app.engine.LockScreenUpdate.Keep -> {}
                     }
                     if (!hasWindowFocus() && shouldEnforceFront()) {
                         bringToFront()
@@ -308,9 +299,6 @@ class CurfewLockActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (lockReason == LockReason.PARENT_INSTANT_FREEZE) {
-            ShieldApplication.instance.preferencesRepository.endParentSession()
-        }
         com.shieldchild.app.ui.dashboard.ParentDashboardActivity.isParentAuthenticatedState.value = false
         com.shieldchild.app.service.ShieldAccessibilityService.revokeParentUninstall()
     }
@@ -334,9 +322,8 @@ class CurfewLockActivity : FragmentActivity() {
         lockedPackage = state.lockedPackage
         lockedAppName = state.lockedAppName
         lockReason = state.reason
-        if (lockReason == LockReason.PARENT_INSTANT_FREEZE) {
-            ShieldApplication.instance.preferencesRepository.endParentSession()
-        }
+        // A parent session lifts an instant lock too (docs/LOCK_RULES.md). Turning instant lock
+        // on ends any session (PreferencesRepository.setInstantLock), so it still locks at once.
     }
 
     private fun shouldEnforceFront(): Boolean {
@@ -395,14 +382,11 @@ class CurfewLockActivity : FragmentActivity() {
 
     private fun isSingleAppOnlyLock(): Boolean {
         if (lockedPackage == null) return false
-        val repo = ShieldApplication.instance.preferencesRepository
-        val deviceReason = com.shieldchild.app.engine.CurfewLockLauncher.evaluateRebootLockReason(
-            policy = repo.getCurfewPolicy(),
-            isDailyExceeded = repo.isDailyLimitExceededToday(),
-            access = repo.getAccessState()
-        )
-        return deviceReason == null
+        return com.shieldchild.app.engine.LockDecider.deviceLock(lockSnapshot()) == null
     }
+
+    private fun lockSnapshot() =
+        com.shieldchild.app.engine.LockDecider.snapshot(this, ShieldApplication.instance.preferencesRepository)
 
     private fun goHomeAndClose() {
         val homeIntent = Intent(Intent.ACTION_MAIN).apply {

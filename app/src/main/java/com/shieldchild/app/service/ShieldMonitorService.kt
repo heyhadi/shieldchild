@@ -18,8 +18,7 @@ import com.shieldchild.app.ShieldApplication
 import com.shieldchild.app.data.LockReason
 import com.shieldchild.app.data.LockState
 import com.shieldchild.app.data.PreferencesRepository
-import com.shieldchild.app.engine.DailyUsageSummary
-import com.shieldchild.app.engine.PolicyEngine
+import com.shieldchild.app.engine.LockDecider
 import com.shieldchild.app.engine.UsageMonitor
 import com.shieldchild.app.overlay.AppShieldOverlayManager
 import com.shieldchild.app.ui.curfew.CurfewLockActivity
@@ -46,7 +45,6 @@ class ShieldMonitorService : Service() {
 
     private lateinit var preferencesRepository: PreferencesRepository
     private lateinit var usageMonitor: UsageMonitor
-    private lateinit var policyEngine: PolicyEngine
     private lateinit var overlayManager: AppShieldOverlayManager
 
     private var currentForegroundPackage: String? = null
@@ -55,7 +53,6 @@ class ShieldMonitorService : Service() {
         super.onCreate()
         preferencesRepository = ShieldApplication.instance.preferencesRepository
         usageMonitor = UsageMonitor(this)
-        policyEngine = PolicyEngine()
         overlayManager = AppShieldOverlayManager(this)
 
         startForeground(NOTIFICATION_ID, buildForegroundNotification())
@@ -247,21 +244,13 @@ class ShieldMonitorService : Service() {
         updateParentSessionNotification()
         warnBeforeGrantEnds()
 
-        val policy = preferencesRepository.getCurfewPolicy()
-        val appLimits = preferencesRepository.getAppLimits()
         val fgPkg = currentForegroundPackage ?: usageMonitor.getForegroundPackageName()
-        val usage = usageMonitor.queryDailyUsage()
+        val now = System.currentTimeMillis()
+        // Measured live here and shared, so every other part of the app decides with the same usage.
+        val usage = LockDecider.refreshUsage(preferencesRepository, now) { usageMonitor.queryDailyUsage() }
+        val lockState = LockDecider.decide(LockDecider.snapshot(preferencesRepository, usage, fgPkg, now))
 
-        val lockState = policyEngine.evaluateLockState(
-            policy = policy,
-            appLimits = appLimits,
-            usageSummary = usage,
-            foregroundPackage = fgPkg,
-            access = preferencesRepository.getAccessState()
-        )
-
-        // Keep the persisted flag in step with the live result, so raising the limit
-        // or adding time unlocks the accessibility/boot paths too.
+        // Parent grants read this to know whether the daily limit is what they're lifting.
         val isLimitLock = lockState is LockState.CurfewLock && lockState.reason == LockReason.TOTAL_SCREEN_TIME_EXCEEDED
         if (isLimitLock != preferencesRepository.isDailyLimitExceededToday()) {
             preferencesRepository.setDailyLimitExceededToday(isLimitLock)
@@ -281,6 +270,7 @@ class ShieldMonitorService : Service() {
                 }
             }
             is LockState.SingleAppLock -> {
+                ShieldAccessibilityService.recheckBesideHome()
                 if (fgPkg != packageName) onMain {
                     overlayManager.showAppLock(
                         packageName = lockState.packageName,
@@ -293,6 +283,7 @@ class ShieldMonitorService : Service() {
             }
             is LockState.Unlocked -> {
                 onMain { overlayManager.dismiss() }
+                ShieldAccessibilityService.recheckBesideHome()
                 com.shieldchild.app.engine.CurfewLockLauncher.dismissLockNotification(this)
             }
         }

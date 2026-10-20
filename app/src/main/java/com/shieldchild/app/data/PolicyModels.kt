@@ -79,6 +79,8 @@ enum class LockReason {
 data class AccessState(
     val isBedtimePaused: Boolean = false,
     val isLimitPaused: Boolean = false,
+    /** Extra minutes given during an instant lock; the instant lock returns when they run out. */
+    val isInstantPaused: Boolean = false,
     val isParentSession: Boolean = false,
     val pausedApps: Set<String> = emptySet()
 )

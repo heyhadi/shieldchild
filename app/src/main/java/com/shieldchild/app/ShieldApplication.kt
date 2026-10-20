@@ -11,6 +11,7 @@ import android.os.Build
 import com.shieldchild.app.data.PreferencesRepository
 
 import com.shieldchild.app.engine.CurfewLockLauncher
+import com.shieldchild.app.engine.LockDecider
 
 class ShieldApplication : Application() {
 
@@ -25,13 +26,7 @@ class ShieldApplication : Application() {
 
         // Immediate reboot / process launch lockdown enforcement
         if (preferencesRepository.isSetupCompleted()) {
-            val policy = preferencesRepository.getCurfewPolicy()
-            val isDailyExceeded = preferencesRepository.isDailyLimitExceededToday()
-            val reason = CurfewLockLauncher.evaluateRebootLockReason(
-                policy = policy,
-                isDailyExceeded = isDailyExceeded,
-                access = preferencesRepository.getAccessState()
-            )
+            val reason = LockDecider.deviceLock(LockDecider.startupSnapshot(preferencesRepository))
             if (reason != null) {
                 if (com.shieldchild.app.engine.ProfileGuard.isScreenInteractiveForProfile(this)) {
                     CurfewLockLauncher.launch(this, reason)

@@ -72,7 +72,7 @@ class PolicyEngine {
         access: AccessState = AccessState()
     ): LockReason? {
         if (access.isParentSession) return null
-        if (policy.isInstantLocked) return LockReason.PARENT_INSTANT_FREEZE
+        if (policy.isInstantLocked && !access.isInstantPaused) return LockReason.PARENT_INSTANT_FREEZE
         if (!access.isBedtimePaused && policy.isCurfewScheduled && isWithinCurfewWindow(policy, cal)) {
             return LockReason.SCHEDULED_BEDTIME_CURFEW
         }
