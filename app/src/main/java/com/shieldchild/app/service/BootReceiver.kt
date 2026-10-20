@@ -6,6 +6,7 @@ import android.content.Intent
 import com.shieldchild.app.ShieldApplication
 import com.shieldchild.app.data.PreferencesRepository
 import com.shieldchild.app.engine.CurfewLockLauncher
+import com.shieldchild.app.engine.LockDecider
 
 class BootReceiver : BroadcastReceiver() {
 
@@ -32,13 +33,7 @@ class BootReceiver : BroadcastReceiver() {
             } catch (_: Exception) {}
 
             // 2. Immediately evaluate if the device should be locked upon reboot
-            val policy = repo.getCurfewPolicy()
-            val isDailyExceeded = repo.isDailyLimitExceededToday()
-            val reason = CurfewLockLauncher.evaluateRebootLockReason(
-                policy = policy,
-                isDailyExceeded = isDailyExceeded,
-                access = repo.getAccessState()
-            )
+            val reason = LockDecider.deviceLock(LockDecider.startupSnapshot(repo))
 
             if (reason != null && com.shieldchild.app.engine.ProfileGuard.isScreenInteractiveForProfile(context)) {
                 // Immediately force curfew lock activity on screen!
