@@ -46,8 +46,12 @@ class AppShieldOverlayManager(private val context: Context) {
                 @Suppress("DEPRECATION")
                 WindowManager.LayoutParams.TYPE_PHONE
             },
+            // Not focusable: holding input focus kept the launcher from getting it when Home was
+            // pressed, so no app switch was seen and the overlay stayed over Home. Touches still
+            // land on the overlay; Back goes to the app under it.
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                    WindowManager.LayoutParams.FLAG_FULLSCREEN or
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.CENTER
@@ -114,26 +118,9 @@ class AppShieldOverlayManager(private val context: Context) {
         usedMinutes: Long,
         isBlocked: Boolean
     ): View {
-        val root = object : android.widget.FrameLayout(context) {
-            override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
-                if (event.keyCode == android.view.KeyEvent.KEYCODE_BACK) {
-                    if (event.action == android.view.KeyEvent.ACTION_UP) {
-                        dismiss()
-                        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                            addCategory(Intent.CATEGORY_HOME)
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                        }
-                        context.startActivity(homeIntent)
-                    }
-                    return true
-                }
-                return super.dispatchKeyEvent(event)
-            }
-        }.apply {
+        val root = android.widget.FrameLayout(context).apply {
             setBackgroundColor(android.graphics.Color.parseColor("#F50F1411")) // DarkShieldColors.canvas at 96%, same as the lock screen
             isClickable = true
-            isFocusable = true
-            isFocusableInTouchMode = true
         }
 
         val container = android.widget.LinearLayout(context).apply {

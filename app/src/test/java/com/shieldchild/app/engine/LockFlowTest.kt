@@ -130,6 +130,17 @@ class LockFlowTest {
         assertEquals(HomeDecision(youtube, null), HomeWindows.decide(launcher, windows, limited, isLocked = { true }))
     }
 
+    @Test
+    fun pipWindowEventOverHomeMeansHomeNotTheApp() {
+        // Bug: after a parent session, tapping the PiP put YouTube's lock over Home.
+        val launchers = setOf(launcher)
+        val overHome = listOf(ScreenWindow(youtube, true), ScreenWindow(launcher, false))
+        assertEquals(launcher, HomeWindows.launcherUnderPip(overHome, launchers))
+        // Over another app, that app is still in front; the PiP event changes nothing.
+        val overApp = listOf(ScreenWindow(youtube, true), ScreenWindow("com.example.game", false), ScreenWindow(launcher, false))
+        assertNull(HomeWindows.launcherUnderPip(overApp, launchers))
+    }
+
     // --- "Use the phone myself" on an app lock (bug: overlay returns at once) ---
 
     @Test
