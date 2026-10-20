@@ -2,6 +2,8 @@
 
 The single description of when ShieldChild locks and what a parent can lift. Every row has a
 test in `app/src/test/java/com/shieldchild/app/engine/LockRulesTest.kt`; change both together.
+The app applies them in one place, `engine/LockDecider`: every part that locks asks it, and
+`LockDeciderTest` checks they all get the same answer.
 
 ## Locks, strongest first
 
