@@ -282,6 +282,7 @@ class ShieldMonitorService : Service() {
             }
             is LockState.Unlocked -> {
                 onMain { overlayManager.dismiss() }
+                fgPkg?.let { ShieldAccessibilityService.recheckBesideHome(it) }
                 com.shieldchild.app.engine.CurfewLockLauncher.dismissLockNotification(this)
             }
         }

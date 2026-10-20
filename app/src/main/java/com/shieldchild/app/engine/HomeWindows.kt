@@ -23,4 +23,12 @@ object HomeWindows {
         val pip = limited.firstOrNull { it.isPictureInPicture && isLocked(it.packageName) }?.packageName
         return HomeDecision(beside ?: launcherPackage, pip)
     }
+
+    /**
+     * The launcher a picture-in-picture window's event really means. Tapping or moving a PiP
+     * window sends window events from its app, but the app isn't in front: what is in front is the
+     * top full window. [windows] are top first. Null when that isn't a launcher.
+     */
+    fun launcherUnderPip(windows: List<ScreenWindow>, launchers: Set<String>): String? =
+        windows.firstOrNull { !it.isPictureInPicture }?.packageName?.takeIf { it in launchers }
 }

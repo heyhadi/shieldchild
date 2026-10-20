@@ -15,6 +15,7 @@ class ShieldAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        instance = this
         checkAndEnforceCurfew()
     }
 
@@ -165,7 +166,17 @@ class ShieldAccessibilityService : AccessibilityService() {
                     pkgName
                 }
                 val homeLaunchers = getHomeLauncherPackages()
-                if (pkgName in homeLaunchers) {
+                val eventIsPip = try {
+                    windows?.firstOrNull { it.id == event.windowId }?.isInPictureInPictureMode == true
+                } catch (_: Exception) { false }
+                if (eventIsPip) {
+                    // A PiP window's event doesn't bring its app to the front; reporting it would
+                    // put the app's lock over Home. Over another app, that app stays in front.
+                    val launcher = try {
+                        com.shieldchild.app.engine.HomeWindows.launcherUnderPip(screenWindows().map { it.first }, homeLaunchers)
+                    } catch (_: Exception) { null } ?: return
+                    reportedPackage = try { handleWindowsBesideHome(launcher, repo) } catch (_: Exception) { launcher }
+                } else if (pkgName in homeLaunchers) {
                     try {
                         reportedPackage = handleWindowsBesideHome(pkgName, repo)
                     } catch (_: Exception) {}
@@ -210,15 +221,30 @@ class ShieldAccessibilityService : AccessibilityService() {
         }
     }
 
-    /** Returns the app to report while Home has focus, closing a locked app's picture-in-picture. */
-    private fun handleWindowsBesideHome(launcherPkg: String, repo: com.shieldchild.app.data.PreferencesRepository): String {
-        val appWindows = (windows ?: emptyList()).filter {
+    /** App windows on screen, top first. */
+    private fun screenWindows(): List<Pair<com.shieldchild.app.engine.ScreenWindow, android.view.accessibility.AccessibilityWindowInfo>> =
+        (windows ?: emptyList()).filter {
             it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION
-        }
-        val seen = appWindows.mapNotNull { win ->
+        }.mapNotNull { win ->
             val pkg = win.root?.packageName?.toString() ?: return@mapNotNull null
             com.shieldchild.app.engine.ScreenWindow(pkg, win.isInPictureInPictureMode) to win
         }
+
+    /**
+     * Called by the monitor service on its checks. Home brings no new window event when a lock
+     * ends while it's in front (a parent session running out), so a locked app's PiP is closed here.
+     */
+    private fun recheckBesideHome(foregroundPkg: String) {
+        if (foregroundPkg !in getHomeLauncherPackages()) return
+        if (!com.shieldchild.app.engine.ProfileGuard.isScreenInteractiveForProfile(this)) return
+        try {
+            handleWindowsBesideHome(foregroundPkg, ShieldApplication.instance.preferencesRepository)
+        } catch (_: Exception) {}
+    }
+
+    /** Returns the app to report while Home has focus, closing a locked app's picture-in-picture. */
+    private fun handleWindowsBesideHome(launcherPkg: String, repo: com.shieldchild.app.data.PreferencesRepository): String {
+        val seen = screenWindows()
         val snapshot = com.shieldchild.app.engine.LockDecider.snapshot(this, repo)
         val decision = com.shieldchild.app.engine.HomeWindows.decide(
             launcherPackage = launcherPkg,
@@ -268,7 +294,21 @@ class ShieldAccessibilityService : AccessibilityService() {
         // Accessibility service interrupted
     }
 
+    override fun onDestroy() {
+        if (instance === this) instance = null
+        super.onDestroy()
+    }
+
     companion object {
+        @Volatile
+        private var instance: ShieldAccessibilityService? = null
+
+        /** See [recheckBesideHome]. Window queries run on the service's main thread. */
+        fun recheckBesideHome(foregroundPkg: String) {
+            val service = instance ?: return
+            android.os.Handler(android.os.Looper.getMainLooper()).post { service.recheckBesideHome(foregroundPkg) }
+        }
+
         @Volatile
         private var isParentUninstallAllowed: Boolean = false
         private var parentUninstallAllowedUntil: Long = 0L
