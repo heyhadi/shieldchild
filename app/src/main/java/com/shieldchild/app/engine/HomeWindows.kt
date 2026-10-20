@@ -25,10 +25,10 @@ object HomeWindows {
     }
 
     /**
-     * The launcher a picture-in-picture window's event really means. Tapping or moving a PiP
-     * window sends window events from its app, but the app isn't in front: what is in front is the
-     * top full window. [windows] are top first. Null when that isn't a launcher.
+     * The launcher in front, or null when the top full window isn't one. A picture-in-picture
+     * window floats above it but doesn't count: tapping or moving one sends window events from
+     * its app, yet Home is still what's in front. [windows] are top first.
      */
-    fun launcherUnderPip(windows: List<ScreenWindow>, launchers: Set<String>): String? =
+    fun launcherInFront(windows: List<ScreenWindow>, launchers: Set<String>): String? =
         windows.firstOrNull { !it.isPictureInPicture }?.packageName?.takeIf { it in launchers }
 }

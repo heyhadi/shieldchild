@@ -23,6 +23,12 @@ class ShieldAccessibilityService : AccessibilityService() {
         if (event == null) return
         if (!com.shieldchild.app.engine.ProfileGuard.isScreenInteractiveForProfile(this)) return
 
+        // Home under the app-lock overlay: the launcher may send no window event of its own.
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
+            if (com.shieldchild.app.overlay.AppShieldOverlayManager.isShowing) recheckBesideHome()
+            return
+        }
+
         // Touch-driven events keep a parent session alive (it ends after 5 min idle).
         // Content changes are excluded: a playing video would otherwise keep it open forever.
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
@@ -169,31 +175,39 @@ class ShieldAccessibilityService : AccessibilityService() {
                 val eventIsPip = try {
                     windows?.firstOrNull { it.id == event.windowId }?.isInPictureInPictureMode == true
                 } catch (_: Exception) { false }
-                if (eventIsPip) {
-                    // A PiP window's event doesn't bring its app to the front; reporting it would
-                    // put the app's lock over Home. Over another app, that app stays in front.
-                    val launcher = try {
-                        com.shieldchild.app.engine.HomeWindows.launcherUnderPip(screenWindows().map { it.first }, homeLaunchers)
-                    } catch (_: Exception) { null } ?: return
-                    reportedPackage = try { handleWindowsBesideHome(launcher, repo) } catch (_: Exception) { launcher }
-                } else if (pkgName in homeLaunchers) {
+                if (pkgName in homeLaunchers) {
                     try {
                         reportedPackage = handleWindowsBesideHome(pkgName, repo)
                     } catch (_: Exception) {}
+                } else if (pkgName != packageName) {
+                    // Events that don't bring their app to the front: a PiP window's, and a late one
+                    // from an app just sent away by Home. Reporting them put the app's lock over Home.
+                    val launcher = try {
+                        com.shieldchild.app.engine.HomeWindows.launcherInFront(screenWindows().map { it.first }, homeLaunchers)
+                    } catch (_: Exception) { null }
+                    if (launcher != null && (eventIsPip || isLastResumed(launcher))) {
+                        reportedPackage = try { handleWindowsBesideHome(launcher, repo) } catch (_: Exception) { launcher }
+                    } else if (eventIsPip) {
+                        return // PiP over another app: that app stays in front.
+                    }
                 }
 
                 val foreground = com.shieldchild.app.engine.ForegroundTracker.reportedPackage(
                     reportedPackage, packageName, com.shieldchild.app.overlay.AppShieldOverlayManager.isShowing
                 ) ?: return
-                val intent = Intent(this, ShieldMonitorService::class.java).apply {
-                    action = ShieldMonitorService.ACTION_FOREGROUND_PACKAGE_CHANGED
-                    putExtra(ShieldMonitorService.EXTRA_PACKAGE_NAME, foreground)
-                }
-                try {
-                    startService(intent)
-                } catch (_: Exception) {}
+                reportForeground(foreground)
             }
         }
+    }
+
+    private fun reportForeground(pkg: String) {
+        val intent = Intent(this, ShieldMonitorService::class.java).apply {
+            action = ShieldMonitorService.ACTION_FOREGROUND_PACKAGE_CHANGED
+            putExtra(ShieldMonitorService.EXTRA_PACKAGE_NAME, pkg)
+        }
+        try {
+            startService(intent)
+        } catch (_: Exception) {}
     }
 
     private fun checkAndEnforceCurfew(foregroundPkg: String? = null) {
@@ -231,16 +245,32 @@ class ShieldAccessibilityService : AccessibilityService() {
         }
 
     /**
-     * Called by the monitor service on its checks. Home brings no new window event when a lock
-     * ends while it's in front (a parent session running out), so a locked app's PiP is closed here.
+     * For when Home is in front without the launcher saying so: a lock ending while it's there (a
+     * parent session running out) closes a locked app's PiP, and Home reached under the app-lock
+     * overlay (the launcher sent no window event after a Home gesture) is reported so the overlay
+     * goes. Reads the windows, not the last reported app: other apps' helper windows report
+     * events too. Home is only reported when the usage log agrees the launcher came to the front
+     * last, so a window list that lags behind can't unlock the app the child just opened.
      */
-    private fun recheckBesideHome(foregroundPkg: String) {
-        if (foregroundPkg !in getHomeLauncherPackages()) return
+    private fun recheckBesideHome() {
         if (!com.shieldchild.app.engine.ProfileGuard.isScreenInteractiveForProfile(this)) return
         try {
-            handleWindowsBesideHome(foregroundPkg, ShieldApplication.instance.preferencesRepository)
+            val launcher = com.shieldchild.app.engine.HomeWindows.launcherInFront(
+                screenWindows().map { it.first }, getHomeLauncherPackages()
+            ) ?: return
+            val reported = handleWindowsBesideHome(launcher, ShieldApplication.instance.preferencesRepository)
+            if (com.shieldchild.app.overlay.AppShieldOverlayManager.isShowing && isLastResumed(launcher)) {
+                reportForeground(reported)
+            }
         } catch (_: Exception) {}
     }
+
+    /**
+     * Whether [pkg] is the app the usage log last saw come to the front. It's written as an app
+     * resumes, before the app's own window events, so it catches a window list that lags behind.
+     */
+    private fun isLastResumed(pkg: String): Boolean =
+        com.shieldchild.app.engine.UsageMonitor(this).getForegroundPackageName() == pkg
 
     /** Returns the app to report while Home has focus, closing a locked app's picture-in-picture. */
     private fun handleWindowsBesideHome(launcherPkg: String, repo: com.shieldchild.app.data.PreferencesRepository): String {
@@ -304,9 +334,9 @@ class ShieldAccessibilityService : AccessibilityService() {
         private var instance: ShieldAccessibilityService? = null
 
         /** See [recheckBesideHome]. Window queries run on the service's main thread. */
-        fun recheckBesideHome(foregroundPkg: String) {
+        fun recheckBesideHome() {
             val service = instance ?: return
-            android.os.Handler(android.os.Looper.getMainLooper()).post { service.recheckBesideHome(foregroundPkg) }
+            android.os.Handler(android.os.Looper.getMainLooper()).post { service.recheckBesideHome() }
         }
 
         @Volatile
