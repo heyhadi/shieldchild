@@ -223,7 +223,7 @@ class RemoteCodeAndGrantsTest {
     }
 
     @Test
-    fun grantMinutesDuringInstantLockDisablesInstantLockAndPausesLimit() {
+    fun grantMinutesDuringInstantLockPausesItWithoutTurningItOff() {
         repo.setInstantLock(true)
         repo.setDailyLimitExceededToday(true)
         assertTrue(repo.getCurfewPolicy().isInstantLocked)
@@ -237,15 +237,18 @@ class RemoteCodeAndGrantsTest {
             now = now
         )
 
-        assertFalse(repo.getCurfewPolicy().isInstantLocked)
+        // docs/LOCK_RULES.md: the instant lock returns when the minutes end; the limit isn't raised.
+        assertTrue(repo.getCurfewPolicy().isInstantLocked)
         assertFalse(repo.isDailyLimitExceededToday())
         val access = repo.getAccessState(now)
+        assertTrue(access.isInstantPaused)
         assertTrue(access.isLimitPaused)
-        assertEquals(15L, repo.getCurfewPolicy().bonusMinutesToday)
+        assertFalse(repo.getAccessState(now + 15 * 60_000L).isInstantPaused)
+        assertEquals(0L, repo.getCurfewPolicy().bonusMinutesToday)
     }
 
     @Test
-    fun grantRestOfTodayDuringInstantLockDisablesInstantLock() {
+    fun grantRestOfTodayDuringInstantLockPausesItUntilMidnight() {
         val cal = Calendar.getInstance().apply { timeInMillis = now }
         repo.setInstantLock(true)
         assertTrue(repo.getCurfewPolicy().isInstantLocked)
@@ -258,7 +261,8 @@ class RemoteCodeAndGrantsTest {
             cal = cal
         )
 
-        assertFalse(repo.getCurfewPolicy().isInstantLocked)
+        assertTrue(repo.getCurfewPolicy().isInstantLocked)
+        assertTrue(repo.getAccessState(now).isInstantPaused)
         assertFalse(repo.isDailyLimitExceededToday())
         val access = repo.getAccessState(now)
         assertTrue(access.isLimitPaused)

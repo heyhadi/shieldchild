@@ -128,6 +128,10 @@ class PreferencesRepository(
     }
 
     fun saveCurfewPolicy(policy: DeviceCurfewPolicy) {
+        // Turning instant lock on cancels a pause left over from an earlier one.
+        if (policy.isInstantLocked != prefs.getBoolean(KEY_INSTANT_LOCKED, false)) {
+            prefs.edit().remove(KEY_INSTANT_PAUSED_UNTIL).apply()
+        }
         if (policy.isInstantLocked) {
             endParentSession()
             com.shieldchild.app.engine.PhoneGuard.clearWhitelistedSession()
@@ -152,7 +156,12 @@ class PreferencesRepository(
             endParentSession()
             com.shieldchild.app.engine.PhoneGuard.clearWhitelistedSession()
         }
-        prefs.edit().putBoolean(KEY_INSTANT_LOCKED, locked).apply()
+        prefs.edit().putBoolean(KEY_INSTANT_LOCKED, locked).remove(KEY_INSTANT_PAUSED_UNTIL).apply()
+    }
+
+    fun getInstantPausedUntil(): Long = prefs.getLong(KEY_INSTANT_PAUSED_UNTIL, 0L)
+    fun pauseInstantLockUntil(timestamp: Long) {
+        prefs.edit().putLong(KEY_INSTANT_PAUSED_UNTIL, timestamp).apply()
     }
 
     fun addBonusMinutes(additionalMinutes: Long) {
@@ -165,6 +174,7 @@ class PreferencesRepository(
         return AccessState(
             isBedtimePaused = now < prefs.getLong(KEY_BEDTIME_PAUSED_UNTIL, 0L),
             isLimitPaused = now < prefs.getLong(KEY_LIMIT_PAUSED_UNTIL, 0L),
+            isInstantPaused = now < prefs.getLong(KEY_INSTANT_PAUSED_UNTIL, 0L),
             isParentSession = isParentSessionActive(),
             pausedApps = getPausedApps(now)
         )
@@ -530,6 +540,7 @@ class PreferencesRepository(
         private const val KEY_DAILY_LIMIT_EXCEEDED_DAY = "key_daily_limit_exceeded_day"
         private const val KEY_BEDTIME_PAUSED_UNTIL = "key_bedtime_paused_until"
         private const val KEY_LIMIT_PAUSED_UNTIL = "key_limit_paused_until"
+        private const val KEY_INSTANT_PAUSED_UNTIL = "key_instant_paused_until"
         private const val KEY_PARENT_SESSION_START = "key_parent_session_start"
         private const val KEY_PARENT_SESSION_TOUCH = "key_parent_session_touch"
         private const val KEY_PARENT_SESSION_BOOT = "key_parent_session_boot"

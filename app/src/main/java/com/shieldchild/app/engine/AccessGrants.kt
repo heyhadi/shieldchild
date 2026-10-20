@@ -50,10 +50,8 @@ object AccessGrants {
                 applyGrant(repo, reason, until)
             }
         } else {
+            // Only a pause: "+ bonus" in the dashboard is the one way to raise the limit.
             applyGrant(repo, reason, until)
-            if (reason == LockReason.TOTAL_SCREEN_TIME_EXCEEDED || reason == LockReason.PARENT_INSTANT_FREEZE) {
-                repo.addBonusMinutes(minutes)
-            }
         }
         repo.addGrantLog(method, GrantLog.minutes(minutes))
         recheck(context)
@@ -124,13 +122,13 @@ object AccessGrants {
                 repo.pauseLimitUntil(maxOf(until, repo.getLimitPausedUntil()))
             }
             LockReason.PARENT_INSTANT_FREEZE -> {
-                repo.setInstantLock(false)
                 repo.pauseLimitUntil(maxOf(until, repo.getLimitPausedUntil()))
                 repo.pauseBedtimeUntil(maxOf(until, repo.getBedtimePausedUntil()))
             }
         }
+        // Granted time pauses an instant lock instead of turning it off: it returns when the time ends.
         if (repo.getCurfewPolicy().isInstantLocked) {
-            repo.setInstantLock(false)
+            repo.pauseInstantLockUntil(maxOf(until, repo.getInstantPausedUntil()))
         }
         repo.setDailyLimitExceededToday(false)
     }

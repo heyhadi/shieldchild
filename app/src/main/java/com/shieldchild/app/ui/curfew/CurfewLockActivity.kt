@@ -107,16 +107,10 @@ class CurfewLockActivity : FragmentActivity() {
                             break
                         }
                     } else {
-                        val currentPolicy = repo.getCurfewPolicy()
-                        val effectiveAccess = if (currentPolicy.isInstantLocked) {
-                            accessState.copy(isParentSession = false)
-                        } else {
-                            accessState
-                        }
                         val current = com.shieldchild.app.engine.CurfewLockLauncher.evaluateRebootLockReason(
-                            policy = currentPolicy,
+                            policy = repo.getCurfewPolicy(),
                             isDailyExceeded = repo.isDailyLimitExceededToday(),
-                            access = effectiveAccess
+                            access = accessState
                         )
                         if (current == null && authMethod == null) {
                             closeLock()
@@ -308,9 +302,6 @@ class CurfewLockActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (lockReason == LockReason.PARENT_INSTANT_FREEZE) {
-            ShieldApplication.instance.preferencesRepository.endParentSession()
-        }
         com.shieldchild.app.ui.dashboard.ParentDashboardActivity.isParentAuthenticatedState.value = false
         com.shieldchild.app.service.ShieldAccessibilityService.revokeParentUninstall()
     }
@@ -334,9 +325,8 @@ class CurfewLockActivity : FragmentActivity() {
         lockedPackage = state.lockedPackage
         lockedAppName = state.lockedAppName
         lockReason = state.reason
-        if (lockReason == LockReason.PARENT_INSTANT_FREEZE) {
-            ShieldApplication.instance.preferencesRepository.endParentSession()
-        }
+        // A parent session lifts an instant lock too (docs/LOCK_RULES.md). Turning instant lock
+        // on ends any session (PreferencesRepository.setInstantLock), so it still locks at once.
     }
 
     private fun shouldEnforceFront(): Boolean {
