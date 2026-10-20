@@ -169,6 +169,10 @@ class ShieldMonitorService : Service() {
         when (intent?.action) {
             ACTION_FOREGROUND_PACKAGE_CHANGED -> {
                 val pkg = intent.getStringExtra(EXTRA_PACKAGE_NAME)
+                // Our own app-lock overlay takes focus and is reported as ShieldChild coming to the
+                // front. The locked app is still underneath, so treating that as a switch would drop
+                // the overlay, which then comes straight back: a flashing loop.
+                if (pkg == packageName && overlayManager.isShowing()) return START_STICKY
                 if (pkg != null) {
                     currentForegroundPackage = pkg
                     serviceScope.launch { evaluateCurrentState() }
