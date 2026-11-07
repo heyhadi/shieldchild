@@ -283,6 +283,8 @@
     <string name="theme">Tema</string>
     <string name="system">Ikuti sistem</string>
     <string name="light">Terang</string>
+    <string name="wallpaper_colors">Warna wallpaper</string>
+    <string name="wallpaper_colors_hint">Ikuti warna wallpaper HP.</string>
     <string name="dark">Gelap</string>
     <string name="the_lock_screen_is_always">Layar kunci selalu gelap.</string>
     <string name="app_updates">Pembaruan aplikasi</string>

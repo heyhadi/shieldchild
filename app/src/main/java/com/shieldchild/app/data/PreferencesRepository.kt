@@ -347,6 +347,11 @@ class PreferencesRepository(
         prefs.edit().putString(KEY_THEME_MODE, mode).apply()
     }
 
+    fun isDynamicColor(): Boolean = prefs.getBoolean(KEY_DYNAMIC_COLOR, false)
+    fun setDynamicColor(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_DYNAMIC_COLOR, enabled).apply()
+    }
+
     fun getLanguage(): String = prefs.getString(KEY_LANGUAGE, "SYSTEM") ?: "SYSTEM"
     fun setLanguage(language: String) {
         prefs.edit().putString(KEY_LANGUAGE, language).commit()
@@ -563,6 +568,7 @@ class PreferencesRepository(
         private const val KEY_PARENT_EXCLUDED_MS = "key_parent_excluded_ms"
         private const val KEY_GRANT_LOG = "key_grant_log"
         private const val KEY_THEME_MODE = "key_theme_mode"
+        private const val KEY_DYNAMIC_COLOR = "key_dynamic_color"
         private const val KEY_LANGUAGE = "key_language"
         private const val KEY_REMOTE_SECRET = "key_remote_secret"
         private const val KEY_REMOTE_LAST_STEP = "key_remote_last_step"

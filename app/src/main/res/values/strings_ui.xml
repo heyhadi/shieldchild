@@ -284,6 +284,8 @@
     <string name="theme">Theme</string>
     <string name="system">System</string>
     <string name="light">Light</string>
+    <string name="wallpaper_colors">Wallpaper colors</string>
+    <string name="wallpaper_colors_hint">Use your phone wallpaper colors.</string>
     <string name="dark">Dark</string>
     <string name="the_lock_screen_is_always">The lock screen is always dark.</string>
     <string name="app_updates">App updates</string>
