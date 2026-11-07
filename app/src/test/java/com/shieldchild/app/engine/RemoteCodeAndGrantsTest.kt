@@ -101,6 +101,17 @@ class RemoteCodeAndGrantsTest {
     }
 
     @Test
+    fun restOfTodayGivenInMorningBedtimeKeepsDailyLimitOffUntilMidnight() {
+        val sixAm = Calendar.getInstance().apply { clear(); set(2026, Calendar.NOVEMBER, 7, 6, 10) }
+        AccessGrants.grantRestOfToday(context, repo, LockReason.SCHEDULED_BEDTIME_CURFEW, GrantMethod.PIN, cal = sixAm)
+
+        val sevenAm = Calendar.getInstance().apply { clear(); set(2026, Calendar.NOVEMBER, 7, 7, 0) }.timeInMillis
+        val midnight = Calendar.getInstance().apply { clear(); set(2026, Calendar.NOVEMBER, 8, 0, 0) }.timeInMillis
+        assertEquals(sevenAm, repo.getBedtimePausedUntil())
+        assertEquals(midnight, repo.getLimitPausedUntil())
+    }
+
+    @Test
     fun parentSessionEndsAfterFiveIdleMinutes() {
         AccessGrants.startParentSession(context, repo, GrantMethod.PIN)
         assertTrue(repo.getAccessState().isParentSession)
