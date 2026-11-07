@@ -66,14 +66,11 @@ object AccessGrants {
         cal: Calendar = Calendar.getInstance(),
         lockedPackage: String? = null
     ) {
-        val until = if (reason == LockReason.SCHEDULED_BEDTIME_CURFEW) {
-            nextCurfewEnd(repo, cal)
-        } else {
-            (cal.clone() as Calendar).apply {
-                add(Calendar.DAY_OF_YEAR, 1)
-                set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-            }.timeInMillis
-        }
+        val midnight = (cal.clone() as Calendar).apply {
+            add(Calendar.DAY_OF_YEAR, 1)
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val until = if (reason == LockReason.SCHEDULED_BEDTIME_CURFEW) nextCurfewEnd(repo, cal) else midnight
         if (lockedPackage != null) {
             val deviceExceeded = repo.isDailyLimitExceededToday()
             repo.pauseAppLimitUntil(lockedPackage, until)
@@ -82,6 +79,10 @@ object AccessGrants {
             }
         } else {
             applyGrant(repo, reason, until)
+        }
+        // A morning bedtime ends before midnight; without this the daily limit would lock right after it.
+        if (reason == LockReason.SCHEDULED_BEDTIME_CURFEW) {
+            repo.pauseLimitUntil(maxOf(midnight, repo.getLimitPausedUntil()))
         }
         repo.addGrantLog(method, if (reason == LockReason.SCHEDULED_BEDTIME_CURFEW) GrantLog.BEDTIME_OFF else GrantLog.REST_OF_TODAY)
         recheck(context)

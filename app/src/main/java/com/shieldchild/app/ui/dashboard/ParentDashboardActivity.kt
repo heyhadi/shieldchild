@@ -516,8 +516,12 @@ fun ReleaseOverviewScreen(
 ) {
     val effectiveLimit = policy.effectiveDailyLimitMinutes
     val isUnlimitedToday = policy.isWholeDayAllowed(PolicyEngine().dayName(java.util.Calendar.getInstance()))
-    val remainingMinutes = if (effectiveLimit > usedMinutesToday) effectiveLimit - usedMinutesToday else 0L
-    val progress = if (isUnlimitedToday) 1f else if (effectiveLimit > 0) (remainingMinutes.toFloat() / effectiveLimit.toFloat()).coerceIn(0f, 1f) else 1f
+    val limitLeftMinutes = if (effectiveLimit > usedMinutesToday) effectiveLimit - usedMinutesToday else 0L
+    // Lock-screen grants pause the limit instead of raising it; show their time so the ring doesn't read 0.
+    val grantLeftMinutes = ((ShieldApplication.instance.preferencesRepository.getLimitPausedUntil() - System.currentTimeMillis()) / 60_000L).coerceAtLeast(0L)
+    val showingGrant = !isUnlimitedToday && grantLeftMinutes > limitLeftMinutes
+    val remainingMinutes = if (showingGrant) grantLeftMinutes else limitLeftMinutes
+    val progress = if (isUnlimitedToday || showingGrant) 1f else if (effectiveLimit > 0) (remainingMinutes.toFloat() / effectiveLimit.toFloat()).coerceIn(0f, 1f) else 1f
 
     val colPrimary = Shield.colors.primary
     val colPrimaryContainer = Shield.colors.primaryContainer
@@ -736,7 +740,7 @@ fun ReleaseOverviewScreen(
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = if (isUnlimitedToday) str(R.string.today) else str(R.string.left_today),
+                                    text = if (isUnlimitedToday) str(R.string.today) else if (showingGrant) str(R.string.extra_time_left) else str(R.string.left_today),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = colInkMuted,
