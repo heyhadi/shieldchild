@@ -108,5 +108,6 @@ object GrantLog {
     const val BEDTIME_OFF = "BEDTIME_OFF"
     const val INSTANT_OFF = "INSTANT_OFF"
     const val CLOCK_CHANGED = "CLOCK_CHANGED"
+    const val SETTINGS_TAMPER = "SETTINGS_TAMPER"
     fun minutes(minutes: Long) = "MINUTES:$minutes"
 }
