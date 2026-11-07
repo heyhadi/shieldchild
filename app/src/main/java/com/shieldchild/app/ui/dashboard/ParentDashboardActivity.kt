@@ -4081,6 +4081,7 @@ private fun grantLogCodeText(code: String): String = when {
     code == com.shieldchild.app.data.GrantLog.BEDTIME_OFF -> str(R.string.bedtime_off_tonight)
     code == com.shieldchild.app.data.GrantLog.INSTANT_OFF -> str(R.string.instant_lock_off)
     code == com.shieldchild.app.data.GrantLog.CLOCK_CHANGED -> str(R.string.log_clock_changed)
+    code == com.shieldchild.app.data.GrantLog.SETTINGS_TAMPER -> str(R.string.log_settings_tamper)
     code.startsWith("MINUTES:") -> str(R.string.min_2, code.removePrefix("MINUTES:"))
     else -> code
 }

@@ -314,7 +314,12 @@ class ShieldAccessibilityService : AccessibilityService() {
      * Instant lock is saved because the lock screen closes itself when no saved rule applies.
      */
     private fun deflectAndLock() {
-        ShieldApplication.instance.preferencesRepository.setInstantLock(true)
+        val repo = ShieldApplication.instance.preferencesRepository
+        // Settings fires many events per screen; log only the one that turns the lock on.
+        if (!repo.getCurfewPolicy().isInstantLocked) {
+            repo.addGrantLog(com.shieldchild.app.data.GrantMethod.SYSTEM, com.shieldchild.app.data.GrantLog.SETTINGS_TAMPER)
+        }
+        repo.setInstantLock(true)
         performGlobalAction(GLOBAL_ACTION_HOME)
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             CurfewLockLauncher.launch(this, LockReason.PARENT_INSTANT_FREEZE)
