@@ -1,14 +1,19 @@
 package com.shieldchild.app.ui.theme
 
 import android.app.Activity
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.shieldchild.app.ShieldApplication
@@ -25,6 +30,15 @@ object ThemeState {
     fun set(mode: ThemeMode) {
         ShieldApplication.instance.preferencesRepository.setThemeMode(mode.name)
         this.mode.value = mode
+    }
+
+    /** Wallpaper colours (Material You); only Android 12+ has them. */
+    val isDynamicSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val dynamic = mutableStateOf(ShieldApplication.instance.preferencesRepository.isDynamicColor())
+
+    fun setDynamic(enabled: Boolean) {
+        ShieldApplication.instance.preferencesRepository.setDynamicColor(enabled)
+        dynamic.value = enabled
     }
 }
 
@@ -62,12 +76,28 @@ private fun materialScheme(c: ShieldColors) = if (c.isDark) {
     )
 }
 
+/** Shield tokens taken from the wallpaper scheme. Warning stays ours so instant lock always reads as a warning. */
+private fun fromDynamic(s: ColorScheme, base: ShieldColors) = base.copy(
+    canvas = s.surfaceContainerLow, card = if (base.isDark) s.surfaceContainer else s.surfaceContainerLowest,
+    cardSubtle = s.surfaceContainerLow, surfaceVariant = s.surfaceContainerHighest, line = s.outlineVariant,
+    primary = s.primary, onPrimary = s.onPrimary,
+    primaryContainer = s.primaryContainer, onPrimaryContainer = s.onPrimaryContainer,
+    ink = s.onSurface, inkMuted = s.onSurfaceVariant, outline = s.outline,
+    error = s.error, errorContainer = s.errorContainer
+)
+
 @Composable
 fun ShieldChildTheme(
     darkTheme: Boolean = isAppInDarkTheme(),
     content: @Composable () -> Unit
 ) {
-    val colors = if (darkTheme) DarkShieldColors else LightShieldColors
+    val base = if (darkTheme) DarkShieldColors else LightShieldColors
+    val context = LocalContext.current
+    val colors = if (ThemeState.dynamic.value && ThemeState.isDynamicSupported) {
+        fromDynamic(if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context), base)
+    } else {
+        base
+    }
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {

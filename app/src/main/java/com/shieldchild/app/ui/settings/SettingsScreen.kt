@@ -122,6 +122,16 @@ fun SettingsScreen(onBack: () -> Unit) {
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(str(R.string.the_lock_screen_is_always), fontSize = 13.sp, color = c.inkMuted)
+                    if (ThemeState.isDynamicSupported) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(str(R.string.wallpaper_colors), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = c.ink)
+                                Text(str(R.string.wallpaper_colors_hint), fontSize = 13.sp, color = c.inkMuted)
+                            }
+                            Switch(checked = ThemeState.dynamic.value, onCheckedChange = { ThemeState.setDynamic(it) })
+                        }
+                    }
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(str(R.string.language), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = c.ink)
                     Spacer(modifier = Modifier.height(8.dp))
